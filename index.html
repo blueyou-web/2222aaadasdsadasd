@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>인터랙티브 게임 보드 (Firebase 연동)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- YouTube IFrame Player API 로드 -->
+    <script src="https://www.youtube.com/iframe_api"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto-Sans-KR:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-primary: #1c1c1b;
@@ -24,13 +26,32 @@
             --modal-backdrop: rgba(0, 0, 0, 0.8);
             --log-move: #60A5FA;
             --log-damage: #F87171;
-            --log-heal: #4ADE80; /* New heal log color */
+            --log-heal: #4ADE80; 
             --log-system: #FBBF24;
             --log-join: #4ADE80;
-            --log-admin: #9333ea; /* Admin action log color */
+            --log-admin: #9333ea;
             --turn-highlight-color: #FBBF24;
-            --bg-game-id: #1f2937; /* Dark mode game ID background */
+            --bg-game-id: #1f2937;
             --bg-selection-overlay: linear-gradient(180deg, var(--bg-primary) 0%, rgba(36, 36, 36, 0.7) 100%);
+            --mp-color: #3B82F6;
+            
+            /* Custom Scrollbar Colors (Dark Mode) */
+            --scrollbar-thumb: var(--accent-primary);
+            --scrollbar-track: #2d2d2d;
+
+            /* Skill Button Glow/Ring Color */
+            --skill-ring-color: rgba(212, 183, 131, 0.8);
+
+            /* Turn Box Style */
+            --turn-box-bg: rgba(55, 65, 81, 0.5); /* Semi-transparent tertiary bg */
+            --turn-box-border: var(--accent-primary);
+            --summary-box-bg: rgba(212, 183, 131, 0.1);
+
+            /* NEW: Gradients for numbers */
+            --gradient-start: #ffffff; 
+            --gradient-end: var(--accent-primary);
+            --pc-color: #4ADE80;
+            --enemy-color: #F87171;
         }
 
         html.light {
@@ -47,8 +68,57 @@
             --accent-secondary: #A98A66;
             --turn-highlight-color: #D97706;
             --log-admin: #6D28D9;
-            --bg-game-id: #E5E7EB; /* Light mode game ID background */
-            --bg-selection-overlay: linear-gradient(180deg, var(--bg-primary) 0%, rgba(229, 231, 235, 0.7) 100%); /* Light mode selection overlay gradient */
+            --bg-game-id: #E5E7EB;
+            --bg-selection-overlay: linear-gradient(180deg, var(--bg-primary) 0%, rgba(229, 231, 235, 0.7) 100%);
+            --mp-color: #1D4ED8;
+
+            /* Custom Scrollbar Colors (Light Mode) */
+            --scrollbar-thumb: var(--accent-primary);
+            --scrollbar-track: #F0F0F0;
+
+            /* Skill Button Glow/Ring Color */
+            --skill-ring-color: rgba(140, 106, 72, 0.8);
+
+            /* Turn Box Style */
+            --turn-box-bg: rgba(229, 231, 235, 0.5); /* Semi-transparent tertiary bg */
+            --turn-box-border: var(--accent-primary);
+            --summary-box-bg: rgba(140, 106, 72, 0.1);
+
+            /* NEW: Gradients for numbers (Light Mode adjustment) */
+            --gradient-start: #3A3226; 
+            --gradient-end: #000000;
+            --pc-color: #16A34A;
+            --enemy-color: #DC2626;
+        }
+
+        /* Global Custom Scrollbar Styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px; /* For horizontal scrollbars */
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 10px;
+            opacity: 0.7; /* Make slightly translucent */
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-secondary);
+        }
+        
+        /* Custom horizontal scrollbar for selection list (more transparent) */
+        #selection-list::-webkit-scrollbar {
+            height: 6px;
+        }
+        #selection-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        html.light #selection-list::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.3);
         }
 
         body {
@@ -88,6 +158,21 @@
             background-color: rgba(212, 183, 131, 0.1);
         }
         
+        /* NEW: Obstacle and Damage Tiles Styles */
+        .cell.tile-obstacle {
+            background-color: #4B5563; /* Dark gray */
+            background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.1) 0, rgba(0,0,0,.1) 2px, transparent 0, transparent 5px);
+            cursor: not-allowed;
+        }
+        .cell.tile-damage {
+            background-color: #991B1B; /* Dark red */
+            box-shadow: inset 0 0 10px rgba(248, 100, 100, 0.5);
+            cursor: help;
+        }
+        .cell.tile-damage:hover {
+            background-color: #EF4444;
+        }
+
         .combat-range {
             outline: 2px solid transparent;
             outline-offset: -2px;
@@ -107,8 +192,8 @@
             box-shadow: inset 0 0 12px var(--log-damage);
         }
         
-        .heal-range-skill { /* New class for heal range highlight */
-            background-color: rgba(74, 222, 128, 0.08); /* Greenish tint */
+        .heal-range-skill {
+            background-color: rgba(74, 222, 128, 0.08);
             outline-color: var(--log-heal);
             box-shadow: inset 0 0 12px var(--log-heal);
         }
@@ -175,7 +260,7 @@
             width: 100%;
             height: 100%;
             border-radius: 50%;
-            background-color: rgba(0, 255, 0, 0.4); /* Green overlay for heal */
+            background-color: rgba(0, 255, 0, 0.4); 
             box-shadow: inset 0 0 10px rgba(0, 255, 0, 0.6);
             pointer-events: none;
         }
@@ -192,22 +277,54 @@
         /* Turn Marker Animation */
         @keyframes bounce-arrow {
             0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-8px); } /* Slightly less movement */
+            50% { transform: translateY(-8px); }
         }
 
         .turn-marker {
-            /* Position adjusted to be visually centered above the token */
+            /* Now also acts as the skip move button */
             position: absolute;
-            top: -2.5rem; /* Adjusted for better centering */
+            top: -2.5rem; 
             left: 50%;
             transform: translateX(-50%);
             color: var(--turn-highlight-color);
-            font-size: 2rem; /* Larger arrow for visibility */
+            font-size: 2rem;
             line-height: 1;
             animation: bounce-arrow 1s infinite ease-in-out;
             z-index: 30;
             filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.7));
+            cursor: pointer; /* Make it clickable for skipping move */
         }
+        
+        /* HP/MP Bar styles */
+        .hp-mp-bar-container {
+             position: absolute;
+             bottom: 0;
+             left: 0;
+             width: 100%;
+             z-index: 5;
+             display: flex;
+             flex-direction: column;
+             gap: 1px; /* Space between bars */
+             padding: 1px 0; /* Vertical padding */
+        }
+        .hp-bar {
+            height: 3px;
+            background-color: #3b0707;
+            overflow: hidden;
+            width: 90%;
+            margin: 0 auto;
+            border-radius: 1px;
+        }
+        .mp-bar {
+            height: 2px; /* Smaller MP bar */
+            background-color: #111827;
+            overflow: hidden;
+            width: 90%;
+            margin: 0 auto;
+            border-radius: 1px;
+        }
+        .hp-fill { background-color: #EF4444; height: 100%; transition: width 0.3s; }
+        .mp-fill { background-color: var(--mp-color); height: 100%; transition: width 0.3s; }
 
         html:not(.light) .character-token:not(.enemy-token) {
             box-shadow: 0 0 8px rgba(212, 183, 131, 0.4), 0 0 10px rgba(0,0,0,0.5);
@@ -238,7 +355,6 @@
             border-color: var(--accent-primary);
             box-shadow: 0 0 5px rgba(212, 183, 131, 0.5);
             outline: none;
-            /* Light mode adjustment for focused input background */
             background-color: var(--bg-tertiary);
         }
 
@@ -262,7 +378,7 @@
 
         #character-selection-overlay {
             height: 250px; 
-            background: var(--bg-selection-overlay); /* Use CSS variable */
+            background: var(--bg-selection-overlay);
             backdrop-filter: blur(4px);
             z-index: 40;
             border-bottom: 1px solid var(--border-secondary);
@@ -274,9 +390,23 @@
         }
         
         #character-selection-overlay.collapsed { height: 1rem; }
-        #selection-list { overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
-        #selection-list::-webkit-scrollbar { display: none; }
-        #selection-list { -ms-overflow-style: none; scrollbar-width: none; }
+        /* NEW: Improved horizontal scrolling for selection list */
+        #selection-list { 
+            overflow-x: scroll; 
+            white-space: nowrap; 
+            -webkit-overflow-scrolling: touch; 
+            justify-content: flex-start; /* Align cards to the start for better horizontal flow */
+        }
+        #selection-list::-webkit-scrollbar {
+            height: 6px;
+        }
+        #selection-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        html.light #selection-list::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.3);
+        }
 
         .char-card-item {
             display: flex;
@@ -303,7 +433,7 @@
         .char-card-item.enemy-card { border-color: #7f1d1d; }
         .char-card-item.enemy-card:hover { border-color: #ef4444; box-shadow: 0 10px 20px rgba(239, 68, 68, 0.2); }
         .char-card-item.enemy-card.selected { border-color: #ef4444; box-shadow: 0 0 25px #ef4444; }
-        /* Adjusted char-card-info for light mode visibility */
+
         .char-card-item .char-card-info { background: linear-gradient(0deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.0) 60%); }
         html.light .char-card-item .char-card-info { 
              background: linear-gradient(0deg, rgba(200, 200, 200, 0.9) 0%, rgba(255, 255, 255, 0.0) 60%); 
@@ -328,7 +458,6 @@
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
-            /* Base dark mode gradient defined above */
             color: var(--text-primary);
         }
 
@@ -351,10 +480,10 @@
         #game-log-list li::before { content: '•'; position: absolute; left: 0.5rem; top: 4px; font-weight: bold; color: var(--accent-primary); }
         #game-log-list .log-move::before { color: var(--log-move); }
         #game-log-list .log-damage::before { color: var(--log-damage); }
-        #game-log-list .log-heal::before { color: var(--log-heal); } /* Heal log prefix color */
+        #game-log-list .log-heal::before { color: var(--log-heal); }
         #game-log-list .log-system::before { color: var(--log-system); }
         #game-log-list .log-join::before { color: var(--log-join); }
-        #game-log-list .log-admin-move::before { color: var(--log-admin); } /* Admin move log color */
+        #game-log-list .log-admin-move::before { color: var(--log-admin); }
 
         .profile-modal-container { 
             background: url('https://www.transparenttextures.com/patterns/dark-matter.png'), linear-gradient(to bottom right, #1a1a1a, #111111); 
@@ -365,7 +494,8 @@
             grid-template-columns: 350px 1fr;
             width: 100%; 
             max-width: 900px; 
-            height: 600px; 
+            /* height: 600px; Remove fixed height */
+            max-height: 90vh; /* Set max height relative to viewport */
             overflow: hidden; 
             position: relative; 
         }
@@ -404,15 +534,249 @@
             padding-right: 1rem;
             margin-right: -1rem;
         }
+        /* Make sure scrollbars are themed */
         .profile-content-scroll::-webkit-scrollbar { width: 8px; }
-        .profile-content-scroll::-webkit-scrollbar-track { background: transparent; }
-        .profile-content-scroll::-webkit-scrollbar-thumb { background: var(--border-secondary); border-radius: 4px; }
+        .profile-content-scroll::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+        .profile-content-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
         .profile-content-scroll::-webkit-scrollbar-thumb:hover { background: var(--accent-secondary); }
 
         #profile-modal #close-modal-btn { position: absolute; top: 1rem; right: 1rem; z-index: 10; background: none; border: none; }
+        
+        /* NEW: Fix for Edit Modal content overflow */
+        .profile-modal-container[style*="grid-template-columns: 1fr"] {
+             height: auto; /* Allow height to shrink/grow */
+             min-height: 400px;
+        }
+        .profile-modal-container[style*="grid-template-columns: 1fr"] .p-6 {
+            display: flex;
+            flex-direction: column;
+            height: 100%; /* Ensure content panel takes full height */
+        }
+        .profile-modal-container[style*="grid-template-columns: 1fr"] .space-y-4 {
+            overflow-y: auto;
+            flex-grow: 1;
+            padding-right: 1rem; /* Adjust padding for scrollbar */
+            margin-right: -1rem;
+        }
+        .profile-modal-container[style*="grid-template-columns: 1fr"] .space-y-4::-webkit-scrollbar { width: 8px; }
+        /* Apply themed scrollbars to edit modal */
+        .profile-modal-container[style*="grid-template-columns: 1fr"] .space-y-4::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+        .profile-modal-container[style*="grid-template-columns: 1fr"] .space-y-4::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); }
+        .profile-modal-container[style*="grid-template-columns: 1fr"] .space-y-4::-webkit-scrollbar-thumb:hover { background: var(--accent-secondary); }
+
+
+        /* User Info Button Style */
+        .info-button {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-secondary);
+            color: var(--text-primary);
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .info-button:hover {
+            background-color: var(--bg-tertiary);
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+        
+        /* NEW: Skill Button Pill Shape and Glow */
+        .skill-btn {
+            border-radius: 9999px; /* Pill shape */
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-secondary);
+            transition: all 0.3s ease;
+        }
+        
+        .skill-btn:not([disabled]):hover {
+            box-shadow: 0 0 10px var(--skill-ring-color), 0 0 5px var(--accent-primary) inset;
+        }
+
+        .skill-btn.ring-2 {
+             box-shadow: 0 0 10px var(--skill-ring-color) !important;
+        }
+
+        /* NEW: Horizontal button group for utility controls */
+        #utility-controls {
+            position: fixed;
+            bottom: 8px;
+            right: 8px;
+            z-index: 50;
+            display: flex;
+            gap: 8px; /* Spacing between buttons */
+            align-items: flex-end;
+        }
+
+        /* NEW: Stylish Turn Box */
+        #turn-status.stylish-turn-box {
+            /* Background: Darker gradient of accent color */
+            background: linear-gradient(145deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.1));
+            backdrop-filter: blur(2px);
+            border: 2px solid var(--accent-primary);
+            box-shadow: 0 0 15px rgba(212, 183, 131, 0.3); /* Lighter glow for the box */
+            padding: 0.75rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        html.light #turn-status.stylish-turn-box {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.1));
+            box-shadow: 0 0 15px rgba(140, 106, 72, 0.2);
+        }
+
+        #turn-status.stylish-turn-box p {
+            /* Set '현재 턴:' text color to primary accent (scrollbar thumb color) */
+             color: var(--accent-primary) !important; 
+             font-weight: bold;
+        }
+
+        #turn-status.stylish-turn-box #current-turn-char {
+             color: var(--accent-primary); /* Use accent primary for the name highlight */
+        }
+        
+        /* UPDATED: Stylish Unit Summary Box - Removed background/borders for transparent look */
+        #unit-summary {
+             /* background-color: var(--summary-box-bg); REMOVED */
+             /* border: 1px solid var(--border-secondary); REMOVED */
+             border-radius: 8px;
+             padding: 0.75rem 0; /* Reduced vertical padding slightly */
+             display: grid;
+             grid-template-columns: 1fr 1fr;
+             gap: 1rem;
+             text-align: center;
+             /* box-shadow: inset 0 0 5px rgba(0,0,0,0.1); REMOVED */
+        }
+        #remaining-pc, #remaining-enemy {
+            background-color: transparent; /* Make inner boxes transparent */
+            padding: 0; /* Remove inner padding */
+            border-radius: 0;
+            border: none;
+        }
+
+        /* NEW: Custom styles for the large gradient numbers */
+        .summary-count {
+            font-size: 3rem; /* Large font size for emphasis */
+            font-weight: 700;
+            display: inline-block;
+            line-height: 1;
+            /* Apply Gradiant Text effect */
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            transition: all 0.3s;
+        }
+        #pc-count.summary-count {
+            background-image: linear-gradient(180deg, var(--gradient-start), var(--pc-color));
+        }
+        #enemy-count.summary-count {
+            background-image: linear-gradient(180deg, var(--gradient-start), var(--enemy-color));
+        }
+        
+        /* NEW: Music Modal Range Slider Style */
+        #music-volume-slider {
+            background: linear-gradient(to right, var(--accent-primary), var(--accent-secondary));
+            /* Apply theme colors to the thumb */
+            --tw-ring-color: var(--accent-primary);
+        }
+        #music-volume-slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            transition: background 0.3s;
+        }
+        #music-volume-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            transition: background 0.3s;
+            border: none;
+        }
+        
+        /* Volume Icon style */
+        #volume-icon {
+            color: var(--accent-primary);
+        }
+
     </style>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-4 overflow-x-hidden pt-60">
+
+    <!-- Hidden Music Player Container -->
+    <div id="music-player-container" class="fixed bottom-0 left-0 w-1 h-1 overflow-hidden pointer-events-none">
+        <div id="yt-player"></div>
+    </div>
+    
+    <!-- Music Control Modal (User Volume Control) -->
+    <div id="music-volume-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[85] hidden">
+        <div class="modal-content rounded-md shadow-2xl p-6 w-full max-w-sm">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold font-title" style="color: var(--accent-primary);">배경 음악 제어</h3>
+                <button id="close-music-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button>
+            </div>
+            <div class="space-y-4">
+                <p id="current-track-display" class="text-sm text-gray-400 truncate">현재 트랙: 없음</p>
+                <div class="flex items-center gap-4">
+                    <button id="music-mute-toggle" class="p-2 bg-gray-600 hover:bg-gray-500 rounded-full">
+                        <svg id="volume-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464A6.001 6.001 0 006 12a6.001 6.001 0 009.536 3.536L20.07 20.07A1 1 0 0021 20V4a1 1 0 00-.93-.93L15.536 8.464z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </button>
+                    <input type="range" id="music-volume-slider" min="0" max="100" value="50" class="flex-grow h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- End Music Control Modal -->
+
+    <!-- NEW: Utility Control Group (Bottom Right) -->
+    <div id="utility-controls">
+        <button id="music-control-btn" class="info-button p-3 rounded-full transition-transform hover:scale-110">
+            <svg id="music-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19h12M9 19l-1 1m13-1l1 1m-4-6h.01M17 10h.01"></path></svg>
+        </button>
+        <button id="user-info-btn" class="info-button p-3 rounded-full transition-transform hover:scale-110">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        </button>
+        <button id="theme-toggle-btn" class="info-button p-3 rounded-full transition-transform hover:scale-110">
+            <svg id="theme-icon-sun" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            <svg id="theme-icon-moon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+        </button>
+        <button id="admin-panel-btn" class="text-white font-bold p-3 rounded-full shadow-lg z-50 transition-transform hover:scale-110" style="background-color: var(--accent-primary); color: var(--bg-primary) !important;">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        </button>
+    </div>
+
+    <!-- User Info Modal -->
+    <div id="user-info-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[80] hidden">
+        <div class="modal-content rounded-md shadow-2xl p-8 w-full max-w-md">
+            <h3 class="text-2xl font-bold mb-4 font-title" style="color: var(--accent-primary);">내 정보 및 게임 코드</h3>
+            
+            <div class="mb-4 p-3 border border-border-secondary text-sm rounded-md">
+                <p class="font-semibold text-gray-400 mb-1">게임 코드:</p>
+                <div class="flex items-center gap-2">
+                    <input readonly id="user-info-game-id-display" class="form-input text-center text-sm p-1 flex-grow" style="background-color: var(--bg-game-id);">
+                    <button id="user-info-copy-btn" class="p-2 bg-gray-600 hover:bg-gray-500 rounded-md">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mb-4 p-3 border border-border-secondary text-sm rounded-md">
+                <p class="font-semibold text-gray-400 mb-1">현재 인증:</p>
+                <span id="user-info-auth-char" class="font-bold text-lg" style="color: var(--accent-primary);">비로그인</span>
+                <p class="text-xs text-gray-500 mt-1">로그인하여 캐릭터 제어 권한을 얻으세요.</p>
+                <div class="mt-3 flex gap-2">
+                    <button id="user-info-login-btn" class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 flex-grow hidden">캐릭터 로그인</button>
+                    <button id="user-info-logout-btn" class="text-sm bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 flex-grow hidden">로그아웃</button>
+                </div>
+            </div>
+
+            <button id="close-user-info-modal-btn" class="w-full mt-4 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2">닫기</button>
+        </div>
+    </div>
+    <!-- End User Info Modal -->
 
     <!-- Game Lobby Modal -->
     <div id="game-lobby-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[100]">
@@ -448,11 +812,12 @@
     <!-- Character Selection Overlay -->
     <div id="character-selection-overlay" class="flex flex-col justify-start fixed top-0 left-0 w-full z-40">
         <div id="selection-list-wrapper" class="overflow-hidden h-full flex items-center transition-opacity duration-300 ease-in-out">
-            <div id="selection-list" class="flex mx-auto p-4 gap-4 max-w-7xl w-full overflow-x-auto whitespace-nowrap justify-center">
+            <div id="selection-list" class="flex mx-auto p-4 gap-4 max-w-7xl w-full overflow-x-auto whitespace-nowrap justify-start">
                  <div class="text-white/70 text-lg w-full text-center p-4">인증 중...</div>
             </div>
         </div>
-        <button id="overlay-toggle" class="absolute top-full left-1/2 transform -translate-x-1/2 bg-gray-700/90 hover:bg-gray-600/90 text-white p-2 rounded-b-lg z-50 transition-colors shadow-lg">
+        <!-- NEW: Toggle button moved to the right -->
+        <button id="overlay-toggle" class="absolute top-full right-4 transform bg-gray-700/90 hover:bg-gray-600/90 text-white p-2 rounded-b-lg z-50 transition-colors shadow-lg">
              <svg id="toggle-icon" class="w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
         </button>
     </div>
@@ -464,29 +829,41 @@
             <div>
                 <div class="flex justify-between items-center mb-2">
                     <h1 class="text-xl font-bold font-title" style="color: var(--accent-primary);">게임 상태</h1>
-                    <button id="theme-toggle-btn" class="p-2 rounded-full theme-button-hover transition-colors">
-                        <svg id="theme-icon-sun" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                        <svg id="theme-icon-moon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-                    </button>
                 </div>
-                 <div id="game-id-container" class="mb-4 hidden">
+                
+                <!-- UPDATED: Remaining Units Summary (Applied Stylish Box, now transparent) -->
+                <div id="unit-summary" class="mb-4">
+                    <div id="remaining-pc" class="text-center">
+                        <p class="text-xs text-gray-400">남은 아군</p>
+                        <span id="pc-count" class="summary-count">0</span>
+                    </div>
+                    <div id="remaining-enemy" class="text-center">
+                        <p class="text-xs text-gray-400">남은 적군</p>
+                        <span id="enemy-count" class="summary-count">0</span>
+                    </div>
+                </div>
+
+                <!-- Game ID Display (REMOVED from UI flow) -->
+                 <div id="game-id-container" class="hidden">
                     <p class="text-xs font-semibold" style="color: var(--text-secondary);">게임 코드:</p>
                     <div class="flex items-center gap-2 mt-1">
-                        <!-- Adjusted input background color via CSS variable -->
                         <input readonly id="game-id-display" class="form-input text-center text-sm p-1" style="background-color: var(--bg-game-id);">
                         <button id="copy-game-id-btn" class="p-2 bg-gray-600 hover:bg-gray-500">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
                 </div>
-                <div id="auth-status" class="mb-4 p-3 border border-border-secondary text-sm">
+                <!-- Auth Status (Hidden, moved to User Info Modal) -->
+                <div id="auth-status" class="hidden">
                     <p class="font-semibold text-gray-400">현재 인증:</p>
                     <span id="current-auth-char" class="text-yellow-400 font-bold">비로그인</span>
                     <button id="login-btn" class="text-xs ml-2 text-indigo-500 hover:text-indigo-300 hidden">로그인</button>
                     <button id="logout-btn" class="text-xs ml-2 text-red-500 hover:text-red-300 hidden">로그아웃</button>
                 </div>
-                <div id="turn-status" class="mb-4 p-3 border border-border-secondary" >
-                    <p class="text-sm font-semibold" style="color: var(--text-secondary);">현재 턴:</p>
+                <!-- End Hidden Elements -->
+
+                <div id="turn-status" class="mb-4 stylish-turn-box" >
+                    <p class="text-sm font-semibold" style="color: var(--accent-primary);">현재 턴:</p>
                     <div id="current-turn-char" class="text-xl font-bold font-title" style="color: var(--accent-secondary);">준비 중...</div>
                 </div>
                 <div id="skill-controls" class="mt-4 pb-4 border-b border-border-secondary">
@@ -521,7 +898,6 @@
     <!-- Modals -->
     <div id="profile-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50 hidden"><div id="modal-content" class="w-full max-w-[900px]"></div></div>
     <div id="custom-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50 hidden"><div id="custom-modal-content" class="modal-content rounded-md shadow-2xl p-8 w-full max-w-sm"><h3 id="custom-modal-title" class="text-xl font-bold mb-4 font-title"></h3><p id="custom-modal-message" class="mb-6"></p><div id="custom-modal-buttons" class="flex justify-end gap-4"></div></div></div>
-    <button id="admin-panel-btn" class="fixed bottom-8 right-8 text-white font-bold p-3 rounded-full shadow-lg z-50 transition-transform hover:scale-110"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg></button>
     <div id="admin-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[60] hidden"><div id="admin-modal-content" class="modal-content rounded-md shadow-2xl p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto"><div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold font-title" style="color: var(--accent-primary);">관리자 패널</h3><button id="close-admin-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button></div><div id="admin-skill-list" class="space-y-4"></div></div></div>
     <div id="admin-password-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[70] hidden">
         <div class="modal-content rounded-md shadow-2xl p-8 w-full max-w-sm">
@@ -535,6 +911,29 @@
             </div>
         </div>
     </div>
+    
+    <!-- Map Edit Modal (New) -->
+    <div id="map-edit-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[65] hidden">
+        <div class="modal-content rounded-md shadow-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <!-- X 버튼 추가 및 제목 컨테이너 수정 -->
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold font-title" style="color: var(--accent-primary);">맵 편집 모드 (관리자)</h3>
+                <button id="close-map-edit-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button>
+            </div>
+            <!-- End Modified header -->
+            <p class="mb-4 text-gray-400">보드 칸을 클릭하여 지형을 설정하세요. 준비 단계에서만 작동합니다.</p>
+            <div class="space-y-4">
+                <div class="flex gap-4 p-4 border border-gray-700 rounded-md">
+                    <button data-tile-type="normal" class="tile-select-btn flex-grow p-3 bg-gray-600 hover:bg-gray-500 text-white">일반 칸</button>
+                    <button data-tile-type="obstacle" class="tile-select-btn flex-grow p-3 bg-gray-700 hover:bg-gray-600 text-white tile-obstacle">장애물 (이동 불가) 🚫</button>
+                    <button data-tile-type="damage" class="tile-select-btn flex-grow p-3 bg-red-800 hover:bg-red-700 text-white tile-damage">대미지 칸 (턴 시작 시 $10$ 피해) 🩸</button>
+                </div>
+                <div id="map-edit-status" class="text-center font-bold text-lg text-green-400">현재 선택: 일반 칸</div>
+                <button id="exit-map-edit-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3">맵 편집 종료</button>
+            </div>
+        </div>
+    </div>
+
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -542,7 +941,6 @@
         import { getFirestore, collection, onSnapshot, doc, updateDoc, query, getDocs, writeBatch, getDoc, setDoc, addDoc, serverTimestamp, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // IMPORTANT: In a real environment, these configs should be loaded securely.
-        // We use placeholders here as per instructions.
         const firebaseConfig = {
             apiKey: "AIzaSyDwTxRX9oUSYVKlhX2k2s7147vQ4MGHj2g",
             authDomain: "battlemap-5525d.firebaseapp.com",
@@ -555,6 +953,20 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+
+        // --- Global YouTube Player Variables ---
+        window.ytPlayer = null;
+        window.isPlayerReady = false;
+        let localVolume = parseInt(localStorage.getItem('musicVolume')) || 50; // User's local volume setting
+        let localMuted = localStorage.getItem('musicMuted') === 'true';
+        let currentTrackId = null; // Track ID currently loaded in the player
+
+        // YouTube API Ready Callback (MUST be global)
+        window.onYouTubeIframeAPIReady = () => {
+            window.isPlayerReady = true;
+            console.log("YouTube API Ready.");
+            // The Firebase listener will handle loading the player if a track is set
+        };
 
         // --- Global Variables ---
         const BOARD_SIZE = 10;
@@ -575,23 +987,37 @@
         let round = 1;
         let maxRounds = 0;
         
-        // --- NEW AUTH STATE ---
-        let loggedInCharId = null; // Currently controlled character ID (for PC)
-        let isAdmin = false;       // Admin mode flag
-        let isAdminMoveAllowed = true; // Flag to control admin move/drag capability
+        let loggedInCharId = null; 
+        let isAdmin = false;       
+        let isAdminMoveAllowed = true; 
         const DEFAULT_PC_PASSWORD = "1234";
-        // --- END NEW AUTH STATE ---
+        
+        // NEW: Map/Board State Variables
+        let boardTiles = {}; // Stores map features { "x,y": { type: 'obstacle' | 'damage' | 'normal', data: {} } }
+        let isMapEditMode = false; // Flag for admin map editing
+        let currentTileType = 'normal'; // The tile type the admin is currently placing
+        const DAMAGE_TILE_DAMAGE = 10;
+        const MP_REGEN_PER_TURN = 10; // New: Mana regeneration per turn
 
         const DEFAULT_SKILLS = {
-            'move': { id: 'move', name: '이동', type: 'Utility', range: 1, rangeShape: 'diamond', multiplier: 0, icon: '🏃' },
-            'slash': { id: 'slash', name: '베기', type: 'Melee', range: 1, rangeShape: 'diamond', multiplier: 1.5, icon: '⚔️' },
-            'stomp': { id: 'stomp', name: '발 구르기', type: 'Melee', range: 1, rangeShape: 'square', multiplier: 1.2, icon: '💥'},
-            'crosscut': { id: 'crosscut', name: '십자 베기', type: 'Melee', range: 2, rangeShape: 'cross', multiplier: 1.0, icon: '十字'},
-            'shoot': { id: 'shoot', name: '사격', type: 'Ranged', range: 4, rangeShape: 'diamond', multiplier: 1.0, icon: '🏹' },
-            'fireball': { id: 'fireball', name: '화염구', type: 'Ranged', range: 3, rangeShape: 'square', multiplier: 1.0, icon: '🔥', isAoe: true, aoeRange: 1, aoeShape: 'square' },
-            'heal': { id: 'heal', name: '치유의 빛', type: 'Heal', range: 2, rangeShape: 'diamond', multiplier: 1.0, icon: '✨', targetType: 'ALLY' }, // New Heal Skill
+            'move': { id: 'move', name: '이동', type: 'Utility', range: 2, rangeShape: 'diamond', multiplier: 0, icon: '🏃', mpCost: 0, category: 'Utility' }, // 기본 이동 거리를 2로 설정
+            'slash': { id: 'slash', name: '베기', type: 'Melee', range: 1, rangeShape: 'diamond', multiplier: 1.5, icon: '⚔️', mpCost: 5, category: 'Attack' },
+            'stomp': { id: 'stomp', name: '발 구르기', type: 'Melee', range: 1, rangeShape: 'square', multiplier: 1.2, icon: '💥', mpCost: 8, category: 'Attack'},
+            'crosscut': { id: 'crosscut', name: '십자 베기', type: 'Melee', range: 2, rangeShape: 'cross', multiplier: 1.0, icon: '十字', mpCost: 10, category: 'Attack'},
+            'shoot': { id: 'shoot', name: '사격', type: 'Ranged', range: 4, rangeShape: 'diamond', multiplier: 1.0, icon: '🏹', mpCost: 5, category: 'Attack' },
+            'fireball': { id: 'fireball', name: '화염구', type: 'Ranged', range: 3, rangeShape: 'square', multiplier: 1.0, icon: '🔥', isAoe: true, aoeRange: 1, aoeShape: 'square', mpCost: 15, category: 'Attack' },
+            'heal': { id: 'heal', name: '치유의 빛', type: 'Heal', range: 2, rangeShape: 'diamond', multiplier: 1.0, icon: '✨', targetType: 'ALLY', mpCost: 10, category: 'Support' },
+            
+            // NEW SKILLS
+            'resurrect': { id: 'resurrect', name: '부활의 주문', type: 'Heal', range: 1, rangeShape: 'diamond', multiplier: 0.3, icon: '👼', targetType: 'ALLY_DEAD', mpCost: 50, category: 'Support' }, // HP 30% 부활, MP 0으로
+            'hp_transfer': { id: 'hp_transfer', name: '생명력 전달', type: 'Heal', range: 2, rangeShape: 'diamond', multiplier: 1.5, icon: '💖', targetType: 'ALLY', mpCost: 0, hpCost: 20, category: 'Support' }, // HP 20 소모, 30 회복
+            'mp_transfer': { id: 'mp_transfer', name: '마나 전달', type: 'Support', range: 2, rangeShape: 'diamond', multiplier: 30, icon: '💧', targetType: 'ALLY', mpCost: 10, category: 'Support' }, // MP 10 소모, 30 MP 전달
         };
         let SKILLS = {};
+        
+        // 스킬 카테고리 순서 정의
+        const SKILL_CATEGORIES = ['Attack', 'Support', 'Heal', 'Utility', 'Defense', 'Other'];
+
 
         // --- UI Elements ---
         const gameBoard = document.getElementById('game-board');
@@ -599,11 +1025,10 @@
         const skillControls = document.getElementById('skill-controls');
         const turnStatus = document.getElementById('current-turn-char');
         const lobbyModal = document.getElementById('game-lobby-modal');
-        const pcLoginModal = document.getElementById('pc-login-modal'); // New PC Login Modal
+        const pcLoginModal = document.getElementById('pc-login-modal');
         const createGameBtn = document.getElementById('create-game-btn');
         const joinGameBtn = document.getElementById('join-game-btn');
         const gameIdInput = document.getElementById('game-id-input');
-        const gameIdContainer = document.getElementById('game-id-container');
         const gameIdDisplay = document.getElementById('game-id-display');
         const copyGameIdBtn = document.getElementById('copy-game-id-btn');
         const adminModal = document.getElementById('admin-modal');
@@ -611,13 +1036,122 @@
         const leaveGameBtn = document.getElementById('leave-game-btn');
         const currentAuthChar = document.getElementById('current-auth-char');
         const logoutBtn = document.getElementById('logout-btn');
-        // NEW: Login Button element
         const loginBtn = document.getElementById('login-btn');
-        
+        const mapEditModal = document.getElementById('map-edit-modal'); // NEW map edit modal
+        // NEW User Info Modal elements
+        const userInfoBtn = document.getElementById('user-info-btn');
+        const userInfoModal = document.getElementById('user-info-modal');
+
+        // NEW Music Control Elements
+        const musicControlBtn = document.getElementById('music-control-btn');
+        const musicVolumeModal = document.getElementById('music-volume-modal');
+
+
+        // --- Music Player Functions ---
+
+        // Function to extract YouTube ID from URL
+        function extractYouTubeId(url) {
+            if (!url) return null;
+            const regex = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})/;
+            const match = url.match(regex);
+            return match ? match[1] : null;
+        }
+
+        function loadPlayer(videoId) {
+            if (!window.isPlayerReady) {
+                console.error("YouTube API not ready yet.");
+                currentTrackId = videoId;
+                return;
+            }
+            
+            currentTrackId = videoId;
+            
+            if (window.ytPlayer) {
+                // Player exists, just load new video
+                window.ytPlayer.loadVideoById({
+                    'videoId': videoId,
+                    'startSeconds': 0,
+                    'suggestedQuality': 'small'
+                });
+                updateVolume(localVolume); // Reapply user's volume
+                return;
+            }
+            
+            // Create new player
+            window.ytPlayer = new YT.Player('yt-player', {
+                videoId: videoId,
+                playerVars: {
+                    'autoplay': 1, // Start playback
+                    'controls': 0,
+                    'loop': 1,
+                    'disablekb': 1,
+                    'fs': 0,
+                    'modestbranding': 1,
+                    'rel': 0,
+                    'showinfo': 0,
+                    'iv_load_policy': 3,
+                    'playlist': videoId, // For seamless looping
+                    'wmode': 'transparent'
+                },
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange
+                }
+            });
+        }
+
+        function onPlayerReady(event) {
+            console.log("YouTube Player Ready.");
+            window.isPlayerReady = true;
+            // Apply user's local volume setting
+            updateVolume(localVolume);
+            event.target.playVideo();
+        }
+
+        function onPlayerStateChange(event) {
+            // Handle ended state to ensure looping (if playerVars.loop wasn't enough)
+            if (event.data === YT.PlayerState.ENDED) {
+                event.target.seekTo(0);
+                event.target.playVideo();
+            }
+        }
+
+        function updateVolume(newVolume) {
+            localVolume = newVolume;
+            localStorage.setItem('musicVolume', newVolume);
+            
+            const effectiveVolume = localMuted ? 0 : localVolume;
+
+            if (window.ytPlayer && window.isPlayerReady && window.ytPlayer.setVolume) {
+                window.ytPlayer.setVolume(effectiveVolume);
+            }
+            
+            // Update modal UI
+            const slider = document.getElementById('music-volume-slider');
+            const volumeIconEl = document.getElementById('volume-icon');
+            
+            if (slider) slider.value = localVolume;
+            
+            if (volumeIconEl) {
+                if (localMuted || localVolume === 0) {
+                    volumeIconEl.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464A6.001 6.001 0 006 12a6.001 6.001 0 009.536 3.536L20.07 20.07A1 1 0 0021 20V4a1 1 0 00-.93-.93L15.536 8.464z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.914 17.914l-6.364-6.364"></path>`; // Mute with slash
+                } else if (localVolume < 30) {
+                    volumeIconEl.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19h12M9 19l-1 1m13-1l1 1m-4-6h.01M17 10h.01"></path>`; // Low volume icon (using generic music icon as proxy)
+                } else {
+                    volumeIconEl.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19h12M9 19l-1 1m13-1l1 1m-4-6h.01M17 10h.01"></path>`; // High volume icon (using generic music icon as proxy)
+                }
+            }
+        }
+
+        function toggleMute() {
+            localMuted = !localMuted;
+            localStorage.setItem('musicMuted', localMuted ? 'true' : 'false');
+            updateVolume(localVolume); // Reapply volume to update player and icon
+        }
+
         // --- Game Lobby ---
         function generateGameId() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
-        // NEW: Function to clear all logs from a game
         async function deleteLogsCollection(gameId) {
             if (!gameId) return;
             try {
@@ -649,18 +1183,19 @@
             localStorage.setItem('currentGameId', gameId);
             lobbyModal.classList.add('hidden');
             gameIdDisplay.value = gameId;
-            gameIdContainer.classList.remove('hidden');
 
             if (isNewGame) {
-                await deleteLogsCollection(gameId); // NEW: Clear logs when creating a new game
+                await deleteLogsCollection(gameId);
                 await seedInitialSettings(gameId);
                 await seedInitialCharacters(gameId);
+                // NEW: Seed initial board tiles (all normal)
+                await setDoc(doc(db, 'games', gameId, 'board', 'tiles'), { tiles: {} });
                 await logAction("⚔️ 새로운 게임이 시작되었습니다! 게임 로그가 초기화되었습니다.", "system");
             }
             listenForGameData(gameId);
-            openPCLoginModal(); // Open PC Login after joining/creating
+            openPCLoginModal();
         }
-        function leaveGame() { localStorage.removeItem('currentGameId'); location.reload(); }
+        function leaveGame() { localStorage.removeItem('currentGameId', gameId); location.reload(); }
 
         // --- Authentication ---
         onAuthStateChanged(auth, (user) => {
@@ -673,24 +1208,37 @@
         });
         
         // --- Data Seeding ---
-        async function seedInitialSettings(gameId) { await setDoc(doc(db, 'games', gameId), { skills: DEFAULT_SKILLS, currentTurnIndex: 0, currentTurnCharId: null, adminPassword: "0000", gameState: 'PREPARATION', round: 1, maxRounds: 0, isAdminMoveAllowed: true }); } // Added isAdminMoveAllowed
+        async function seedInitialSettings(gameId) { 
+            await setDoc(doc(db, 'games', gameId), { 
+                skills: DEFAULT_SKILLS, 
+                currentTurnIndex: 0, 
+                currentTurnCharId: null, 
+                adminPassword: "0000", 
+                gameState: 'PREPARATION', 
+                round: 1, 
+                maxRounds: 0, 
+                isAdminMoveAllowed: true,
+                musicUrl: '',
+                musicName: ''
+            }); 
+        }
         async function seedInitialCharacters(gameId) {
             const charCollectionRef = collection(db, "games", gameId, "characters");
             const snapshot = await getDocs(charCollectionRef);
             if (snapshot.empty) {
                 const batch = writeBatch(db);
                 const pcData = [ 
-                    { name: "Shadow Assassin", img: "https://cdn.pixabay.com/photo/2023/12/15/21/47/cat-8451431_1280.jpg", type: 'PC', size: 1, skills: ['slash', 'shoot', 'heal'], order: 1 }, 
-                    { name: "Steel Guardian", img: "https://cdn.pixabay.com/photo/2023/12/15/21/47/cat-8451431_1280.jpg", type: 'PC', size: 1, skills: ['crosscut'], order: 3 }, 
+                    { name: "Shadow Assassin", img: "https://cdn.pixabay.com/photo/2023/12/15/21/47/cat-8451431_1280.jpg", type: 'PC', size: 1, skills: ['slash', 'shoot', 'heal', 'hp_transfer'], order: 1 }, // Added hp_transfer
+                    { name: "Steel Guardian", img: "https://cdn.pixabay.com/photo/2023/12/15/21/47/cat-8451431_1280.jpg", type: 'PC', size: 1, skills: ['crosscut', 'resurrect', 'mp_transfer'], order: 3 }, // Added resurrect, mp_transfer
                 ];
                 const enemyData = [ 
                     { name: "Dark Knight", img: "https://cdn.pixabay.com/photo/2015/05/22/05/52/cat-778315_1280.jpg", type: 'ENEMY', size: 1, skills: ['slash'], order: 2 }, 
                     { name: "Abyssal Golem", img: "https://cdn.pixabay.com/photo/2015/05/22/05/52/cat-778315_1280.jpg", type: 'ENEMY', size: 2, skills: ['stomp'], order: 4 }, 
                 ];
                 [...pcData, ...enemyData].forEach(char => {
-                    // Added password field for PC characters
                     const charPassword = char.type === 'PC' ? DEFAULT_PC_PASSWORD : ''; 
-                    const newChar = { name: char.name, imageUrl: char.img || '', type: char.type, size: char.size, hp: 100, maxHp: 100, minAttack: 12, maxAttack: 18, minDefense: 3, maxDefense: 7, x: null, y: null, skills: char.skills || [], turnOrder: char.order, password: charPassword };
+                    // ADDED MP stats
+                    const newChar = { name: char.name, imageUrl: char.img || '', type: char.type, size: char.size, hp: 100, maxHp: 100, mp: 50, maxMp: 50, minAttack: 12, maxAttack: 18, minDefense: 3, maxDefense: 7, x: null, y: null, skills: char.skills || [], turnOrder: char.order, password: charPassword };
                     batch.set(doc(charCollectionRef), newChar);
                 });
                 await batch.commit();
@@ -710,18 +1258,48 @@
                     gameState = data.gameState || 'PREPARATION';
                     round = data.round || 1;
                     maxRounds = data.maxRounds || 0;
-                    isAdminMoveAllowed = data.isAdminMoveAllowed !== undefined ? data.isAdminMoveAllowed : true; // Load new setting
+                    isAdminMoveAllowed = data.isAdminMoveAllowed !== undefined ? data.isAdminMoveAllowed : true;
                     const turnCharId = data.currentTurnCharId;
                     currentTurnIndex = characters.findIndex(c => c.id === turnCharId);
                     if (currentTurnIndex === -1) currentTurnIndex = 0;
                     if (!adminModal.classList.contains('hidden')) openAdminModal();
+                    
+                    // NEW: Music Control Update
+                    const musicUrl = data.musicUrl;
+                    const musicName = data.musicName || "재생 중인 트랙 없음";
+                    document.getElementById('current-track-display').textContent = `현재 트랙: ${musicName}`;
+                    const newTrackId = extractYouTubeId(musicUrl);
+                    
+                    if (newTrackId && newTrackId !== currentTrackId) {
+                         loadPlayer(newTrackId);
+                         logAction(`🎵 관리자가 배경 음악을 '${musicName}'(으)로 변경했습니다.`, "system");
+                    } else if (!newTrackId && currentTrackId && window.ytPlayer) {
+                         if (window.ytPlayer.stopVideo) {
+                            window.ytPlayer.stopVideo();
+                         }
+                         currentTrackId = null;
+                         logAction(`🔇 관리자가 배경 음악 재생을 중지했습니다.`, "system");
+                    }
+
+
+                    // NEW: Check for map features and fetch them
+                    onSnapshot(doc(db, 'games', gameId, 'board', 'tiles'), (tileDoc) => {
+                        boardTiles = tileDoc.data()?.tiles || {};
+                        render();
+                    });
+
                     render();
                 }
             });
 
             unsubscribeChars = onSnapshot(query(collection(db, "games", gameId, "characters")), (snapshot) => {
                 characters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.turnOrder - b.turnOrder);
-                // If PC login modal is open, re-render character list
+                // Ensure MP defaults are set if missing (for older entries)
+                characters.forEach(char => {
+                    if (char.mp === undefined || char.maxMp === undefined) {
+                        char.mp = char.maxMp = 50; 
+                    }
+                });
                 if (!pcLoginModal.classList.contains('hidden')) populatePCLoginSelect(); 
                 render();
             });
@@ -734,6 +1312,25 @@
         // --- Game Logic ---
         async function logAction(message, type = "system") { if (gameId) await addDoc(collection(db, "games", gameId, "logs"), { message, type, timestamp: serverTimestamp() }); }
         
+        // NEW: Function to check for damage tile and apply damage if necessary
+        async function checkAndApplyTileDamage(char) {
+            if (char.x === null || char.hp <= 0) return;
+
+            const tileKey = `${char.x},${char.y}`;
+            const tile = boardTiles[tileKey];
+
+            if (tile && tile.type === 'damage') {
+                const damage = DAMAGE_TILE_DAMAGE;
+                const newHp = Math.max(0, char.hp - damage);
+                
+                await updateDoc(doc(db, 'games', gameId, 'characters', char.id), { hp: newHp });
+
+                let message = `🩸 ${char.name}이(가) 대미지 칸에 서있어 **${damage} 피해**를 입었습니다!`;
+                if (newHp === 0) message += `<br>💀 ${char.name}이(가) 쓰러졌습니다!`;
+                await logAction(message, "damage");
+            }
+        }
+
         async function updateTurnIndex(newIndex, reverse = false) {
             if (characters.length === 0 || !gameId) return;
             
@@ -749,7 +1346,8 @@
             }
             
             currentTurnIndex = newIndex % characters.length;
-            const currentTurnCharId = characters[currentTurnIndex]?.id || null;
+            const currentTurnChar = characters[currentTurnIndex];
+            const currentTurnCharId = currentTurnChar?.id || null;
 
             if (maxRounds > 0 && newRound > maxRounds) {
                 await setDoc(doc(db, 'games', gameId), { gameState: 'ENDED', round: newRound, currentTurnIndex, currentTurnCharId }, { merge: true });
@@ -757,6 +1355,22 @@
                 await logAction(`- 전투 종료: 최대 라운드 도달 -`, "system");
             } else {
                 await setDoc(doc(db, 'games', gameId), { round: newRound, currentTurnIndex, currentTurnCharId }, { merge: true });
+                
+                if (gameState === 'STARTED' && currentTurnChar) {
+                    // 1. MP Regeneration
+                    if (!reverse) {
+                        const newMp = Math.min(currentTurnChar.maxMp, currentTurnChar.mp + MP_REGEN_PER_TURN);
+                        if (newMp > currentTurnChar.mp) {
+                            await updateDoc(doc(db, 'games', gameId, 'characters', currentTurnChar.id), { mp: newMp });
+                            await logAction(`💧 ${currentTurnChar.name}이(가) **${MP_REGEN_PER_TURN} MP**를 회복했습니다.`, "system");
+                        }
+                    }
+                    
+                    // 2. Tile Damage Check
+                    if (!reverse) {
+                        await checkAndApplyTileDamage(currentTurnChar);
+                    }
+                }
             }
         }
 
@@ -786,6 +1400,20 @@
             selectedCharacterId = null;
         }
 
+        // Helper function to handle HP change
+        async function updateHP(char, amount, logType) {
+            const newHp = Math.min(char.maxHp, Math.max(0, char.hp + amount));
+            await updateDoc(doc(db, 'games', gameId, 'characters', char.id), { hp: newHp });
+            return newHp;
+        }
+        
+        // Helper function to handle MP change
+        async function updateMP(char, amount) {
+             const newMp = Math.min(char.maxMp, Math.max(0, char.mp + amount));
+             await updateDoc(doc(db, 'games', gameId, 'characters', char.id), { mp: newMp });
+             return newMp;
+        }
+
 
         function findTargetsInAoe(centerX, centerY, range, shape, skillType, attackerType) {
             const affectedCells = new Set();
@@ -802,14 +1430,19 @@
             
             const targets = new Set();
             characters.forEach(char => {
-                if (char.x !== null && char.hp > 0) {
-                    // Check target eligibility based on skill type
+                if (char.x !== null) {
                     const isEnemy = char.type !== attackerType;
                     const isAlly = char.type === attackerType;
                     
                     let isEligible = false;
-                    if (skillType === 'Heal' && isAlly) isEligible = true;
-                    if (skillType !== 'Heal' && isEnemy) isEligible = true;
+                    
+                    // Standard damage/heal targeting
+                    if ((skillType === 'Heal' || skillType === 'Support') && isAlly && char.hp > 0) isEligible = true;
+                    if (skillType !== 'Heal' && skillType !== 'Support' && isEnemy && char.hp > 0) isEligible = true;
+                    
+                    // Special case for Resurrect
+                    const skill = SKILLS[selectedSkill];
+                    if (skill && skill.targetType === 'ALLY_DEAD' && isAlly && char.hp <= 0) isEligible = true;
 
                     if (isEligible) {
                         const size = char.size || 1;
@@ -830,6 +1463,15 @@
         async function applyDamage(attacker, defender, skillId) {
             const skill = SKILLS[skillId];
             if (!skill) return;
+            
+            // Mana Check
+            if (attacker.mp < skill.mpCost) {
+                 await logAction(`⚠️ ${attacker.name}이(가) 마나가 부족하여 ${skill.name}을(를) 시전하지 못했습니다. (필요: ${skill.mpCost}, 현재: ${attacker.mp})`, "system");
+                 return false;
+            }
+
+            // Consume MP
+            await updateMP(attacker, -skill.mpCost);
 
             const defenderToken = document.querySelector(`.character-token[data-char-id="${defender.id}"]`);
             if (defenderToken) {
@@ -844,62 +1486,101 @@
             const currentDefense = Math.floor(Math.random() * (defender.maxDefense - defender.minDefense + 1)) + defender.minDefense;
             const finalDamage = Math.max(1, Math.round((currentAttack * skill.multiplier) - currentDefense));
 
-            const newHp = Math.max(0, defender.hp - finalDamage);
+            const newHp = await updateHP(defender, -finalDamage, "damage");
             
-            await new Promise(r => setTimeout(r, 150));
-            await updateDoc(doc(db, 'games', gameId, 'characters', defender.id), { hp: newHp });
-
             let message = `💥 ${attacker.name}의 ${skill.name}! ${defender.name}에게 **${finalDamage.toFixed(0)} 피해!**`;
             if (newHp === 0) message += `<br>💀 ${defender.name}이(가) 쓰러졌습니다!`;
             await logAction(message, "damage");
+            return true;
         }
         
-        // --- New Function: Apply Heal ---
-        async function applyHeal(caster, target, skillId) {
+        // --- Refactored Apply Heal/Support ---
+        async function applyHealOrSupport(caster, target, skillId) {
             const skill = SKILLS[skillId];
-            if (!skill) return;
+            if (!skill) return false;
             
+            const isResurrect = skillId === 'resurrect';
+            const isHpTransfer = skillId === 'hp_transfer';
+            const isMpTransfer = skillId === 'mp_transfer';
+            
+            // MP/HP Cost Check
+            if (caster.mp < skill.mpCost || (isHpTransfer && caster.hp <= skill.hpCost)) {
+                 const resource = isHpTransfer ? 'HP' : 'MP';
+                 const cost = isHpTransfer ? skill.hpCost : skill.mpCost;
+                 const current = isHpTransfer ? caster.hp : caster.mp;
+                 await logAction(`⚠️ ${caster.name}이(가) ${resource}가 부족하여 ${skill.name}을(를) 시전하지 못했습니다. (필요: ${cost} ${resource}, 현재: ${current} ${resource})`, "system");
+                 return false;
+            }
+            
+            // Consume Resources
+            if (skill.mpCost > 0) await updateMP(caster, -skill.mpCost);
+            if (skill.hpCost > 0) await updateHP(caster, -skill.hpCost, "damage"); // Self-damage for HP transfer
+
+            // Animation Helper
             const targetToken = document.querySelector(`.character-token[data-char-id="${target.id}"]`);
             if (targetToken) {
-                targetToken.classList.add('heal-animation', 'show-heal-overlay');
+                const animationClass = isMpTransfer ? 'heal-animation' : 'heal-animation'; 
+                const overlayClass = isMpTransfer ? 'show-heal-overlay' : 'show-heal-overlay';
+                targetToken.classList.add(animationClass, overlayClass);
                 setTimeout(() => {
-                    targetToken.classList.remove('heal-animation');
-                    targetToken.classList.remove('show-heal-overlay');
+                    targetToken.classList.remove(animationClass, overlayClass);
                 }, 1000);
             }
 
-            // Calculate heal amount based on caster's stats (e.g., MinAttack, MaxAttack)
-            const baseHeal = Math.floor(Math.random() * (caster.maxAttack - caster.minAttack + 1)) + caster.minAttack;
-            const finalHeal = Math.max(1, Math.round(baseHeal * skill.multiplier));
+            let message;
             
-            const newHp = Math.min(target.maxHp, target.hp + finalHeal);
+            if (isResurrect) {
+                // Resurrect: Set HP to 30% of maxHP, set MP to 0. Must be placed (x!=null is checked by eligibility).
+                const reviveHp = Math.round(target.maxHp * skill.multiplier);
+                await updateDoc(doc(db, 'games', gameId, 'characters', target.id), { 
+                    hp: reviveHp, 
+                    mp: 0 
+                });
+                message = `👼 ${caster.name}의 ${skill.name}! **${target.name}**을(를) **${reviveHp} HP, 0 MP**로 부활시켰습니다.`;
+                await logAction(message, "heal");
+            } else if (isHpTransfer) {
+                // HP Transfer (Healing)
+                const healAmount = Math.max(1, Math.round(caster.minAttack * skill.multiplier));
+                const newHp = await updateHP(target, healAmount, "heal");
+                message = `💖 ${caster.name}이(가) **${skill.hpCost} HP**를 소모하여 ${target.name}에게 **${healAmount} HP**를 전달했습니다. (${target.hp} → ${newHp})`;
+                await logAction(message, "heal");
+            } else if (isMpTransfer) {
+                // MP Transfer
+                const mpAmount = skill.multiplier; // Multiplier holds the fixed MP amount (30)
+                const newMp = await updateMP(target, mpAmount);
+                message = `💧 ${caster.name}이(가) **${skill.mpCost} MP**를 소모하여 ${target.name}에게 **${mpAmount} MP**를 전달했습니다. (${target.mp} → ${newMp})`;
+                await logAction(message, "system");
+            } else if (skill.type === 'Heal') {
+                 // Standard Heal
+                const baseHeal = Math.floor(Math.random() * (caster.maxAttack - caster.minAttack + 1)) + caster.minAttack;
+                const finalHeal = Math.max(1, Math.round(baseHeal * skill.multiplier));
+                const newHp = await updateHP(target, finalHeal, "heal");
+                message = `✨ ${caster.name}의 ${skill.name}! ${target.name}의 **HP를 ${finalHeal.toFixed(0)} 회복!** (${target.hp} → ${newHp})`;
+                await logAction(message, "heal");
+            }
             
-            await new Promise(r => setTimeout(r, 150));
-            await updateDoc(doc(db, 'games', gameId, 'characters', target.id), { hp: newHp });
-
-            let message = `✨ ${caster.name}의 ${skill.name}! ${target.name}의 **HP를 ${finalHeal.toFixed(0)} 회복!** (${target.hp} → ${newHp})`;
-            if (newHp === target.maxHp) message += `<br>💚 ${target.name}이(가) 완전히 회복되었습니다!`;
-            await logAction(message, "heal");
+            return true;
         }
 
 
         async function executeSkill(attacker, target, skillId) {
             const skill = SKILLS[skillId];
             if (!skill) return;
+            
+            let actionSucceeded = false;
 
-            if (skill.type === 'Heal') {
-                 if (skill.isAoe) {
-                    // Heal AoE targets (Target is the center cell)
-                    const targets = findTargetsInAoe(target.x, target.y, skill.aoeRange, skill.aoeShape, skill.type, attacker.type);
+            if (skill.type === 'Heal' || skill.type === 'Support') {
+                if (skill.isAoe) {
+                    const targets = findTargetsInAoe(target.x, target.y, skill.aoeRange, skill.aoeShape, attacker.type, attacker.type);
                     if (targets.length > 0) {
-                        await logAction(`✨ ${attacker.name}이(가) ${skill.name}(으)로 광역 치유!`, "heal");
-                        await Promise.all(targets.map(t => applyHeal(attacker, t, skillId)));
+                        await logAction(`✨ ${attacker.name}이(가) ${skill.name}(으)로 광역 ${skill.type === 'Heal' ? '치유' : '지원'}!`, skill.type === 'Heal' ? "heal" : "system");
+                        const results = await Promise.all(targets.map(t => applyHealOrSupport(attacker, t, skillId)));
+                        actionSucceeded = results.some(r => r);
                     } else {
-                        await logAction(`✨ ${attacker.name}의 ${skill.name}! 하지만 치유할 대상이 없습니다.`, "system");
+                        await logAction(`✨ ${attacker.name}의 ${skill.name}! 하지만 대상이 없습니다.`, "system");
                     }
                 } else {
-                    // Single-target heal (Target is the character)
-                    await applyHeal(attacker, target, skillId);
+                    actionSucceeded = await applyHealOrSupport(attacker, target, skillId);
                 }
             } else {
                 // Damage Skills (Melee, Ranged)
@@ -907,16 +1588,21 @@
                     const targets = findTargetsInAoe(target.x, target.y, skill.aoeRange, skill.aoeShape, skill.type, attacker.type);
                     if (targets.length > 0) {
                         await logAction(`🔥 ${attacker.name}이(가) ${skill.name}(으)로 광역 공격!`, "damage");
-                        await Promise.all(targets.map(t => applyDamage(attacker, t, skillId)));
+                        const results = await Promise.all(targets.map(t => applyDamage(attacker, t, skillId)));
+                        actionSucceeded = results.some(r => r);
                     } else {
                         await logAction(`🔥 ${attacker.name}의 ${skill.name}! 하지만 아무도 맞지 않았습니다.`, "system");
                     }
                 } else {
-                    await applyDamage(attacker, target, skillId);
+                    actionSucceeded = await applyDamage(attacker, target, skillId);
                 }
             }
             
-            await nextTurn();
+            if (actionSucceeded) {
+                await nextTurn();
+            } else {
+                render(); // Re-render to show current state/error messages if action failed
+            }
         }
 
         async function undoMove() {
@@ -948,8 +1634,6 @@
         function openPCLoginModal() {
              const pcChars = characters.filter(c => c.type === 'PC');
              if (pcChars.length === 0) {
-                 // Optionally show a message if no PC characters exist
-                 // console.log("No PC characters available for login.");
                  return;
              }
 
@@ -982,35 +1666,55 @@
             }
         }
         
+        // Function to update all status indicators
         function updateAuthStatus() {
-            logoutBtn.classList.add('hidden');
-            loginBtn.classList.add('hidden'); // Hide login button by default
-            currentAuthChar.style.color = 'var(--text-secondary)';
-
+            const char = characters.find(c => c.id === loggedInCharId);
+            let authText = '비로그인';
+            let authColor = 'var(--text-secondary)';
+            let isUserLoggedIn = false;
+            
             if (isAdmin) {
-                currentAuthChar.textContent = `관리자 (토큰 이동: ${isAdminMoveAllowed ? '허용' : '제한'})`;
-                currentAuthChar.style.color = 'var(--log-admin)';
-                logoutBtn.classList.remove('hidden');
+                authText = `관리자 (토큰 이동: ${isAdminMoveAllowed ? '허용' : '제한'}, 맵 편집: ${isMapEditMode ? 'ON' : 'OFF'})`;
+                authColor = 'var(--log-admin)';
             } else if (loggedInCharId) {
-                const char = characters.find(c => c.id === loggedInCharId);
-                currentAuthChar.textContent = `${char ? char.name : 'Unknown PC'} (${char ? char.type : 'PC'})`;
-                currentAuthChar.style.color = 'var(--accent-primary)';
-                logoutBtn.classList.remove('hidden');
-            } else {
-                currentAuthChar.textContent = '비로그인';
-                // Show login button only if game is loaded (gameId exists) AND there are PC characters available
-                if (gameId && characters.some(c => c.type === 'PC')) {
-                    loginBtn.classList.remove('hidden');
-                }
+                authText = `${char ? char.name : 'Unknown PC'} (${char ? char.type : 'PC'})`;
+                authColor = 'var(--accent-primary)';
+                isUserLoggedIn = true;
             }
+
+            // Update User Info Modal fields
+            document.getElementById('user-info-game-id-display').value = gameId || "N/A";
+            const authCharSpan = document.getElementById('user-info-auth-char');
+            authCharSpan.textContent = authText;
+            authCharSpan.style.color = authColor;
+
+            const userInfoLoginBtn = document.getElementById('user-info-login-btn');
+            const userInfoLogoutBtn = document.getElementById('user-info-logout-btn');
+
+            if (gameId && characters.some(c => c.type === 'PC') && !isAdmin && !loggedInCharId) {
+                userInfoLoginBtn.classList.remove('hidden');
+                userInfoLogoutBtn.classList.add('hidden');
+            } else if (isAdmin || isUserLoggedIn) {
+                userInfoLoginBtn.classList.add('hidden');
+                userInfoLogoutBtn.classList.remove('hidden');
+            } else {
+                userInfoLoginBtn.classList.add('hidden');
+                userInfoLogoutBtn.classList.add('hidden');
+            }
+
+            // Bind listeners for User Info Modal buttons
+            userInfoLoginBtn.onclick = openPCLoginModal;
+            userInfoLogoutBtn.onclick = handleLogout;
         }
         
         function handleLogout() {
             loggedInCharId = null;
             isAdmin = false;
+            isMapEditMode = false;
             updateAuthStatus();
+            closeModal('user-info-modal'); // Close info modal after logout
             render();
-            // Do not automatically open login modal after manual logout, but show the button
+            closeModal('map-edit-modal');
         }
         // --- End PC Login Handlers ---
 
@@ -1036,14 +1740,34 @@
             const skill = SKILLS[skillId];
             const range = skill.range;
             const size = char.size || 1;
-            const isAttack = skill.type !== 'Utility' && skill.type !== 'Heal';
-            const isHeal = skill.type === 'Heal'; // New check for heal skill
-            const isAction = isAttack || isHeal;
+            
+            const isMove = skill.category === 'Utility'; // Check category for utility skills
+            const isAttack = skill.category === 'Attack';
+            const isHealOrSupport = skill.category === 'Heal' || skill.category === 'Support';
+            
             const shape = skill.rangeShape || 'diamond';
             const validCells = new Set();
+            const invalidMoveCells = new Set(); // Cells occupied or blocked by obstacle
 
-            if (isAction) {
-                // Calculate action range (Attack or Heal)
+            if (isMove) {
+                // Movement range
+                const originX = char.x, originY = char.y;
+                for (let dy = -range; dy <= range; dy++) for (let dx = -range; dx <= range; dx++) {
+                    if (Math.abs(dx) + Math.abs(dy) <= range) {
+                        const targetX = originX + dx, targetY = originY + dy;
+                        const cellKey = `${targetX},${targetY}`;
+
+                        if (targetX >= 0 && targetX < BOARD_SIZE && targetY >= 0 && targetY < BOARD_SIZE) {
+                            if (canPlaceCharacter(char, targetX, targetY)) {
+                                validCells.add(cellKey);
+                            } else {
+                                invalidMoveCells.add(cellKey);
+                            }
+                        }
+                    }
+                }
+            } else if (isAttack || isHealOrSupport) {
+                 // Action range
                 for (let ex = 0; ex < size; ex++) for (let ey = 0; ey < size; ey++) {
                     const originX = char.x + ex, originY = char.y + ey;
                     for (let dy = -range; dy <= range; dy++) for (let dx = -range; dx <= range; dx++) {
@@ -1056,22 +1780,12 @@
                         }
                     }
                 }
-                // Remove character's own cells from the target range if it's single target (AOE can hit self)
                 if (!skill.isAoe) {
                     for (let ex = 0; ex < size; ex++) for (let ey = 0; ey < size; ey++) validCells.delete(`${char.x + ex},${char.y + ey}`);
                 }
-            } else {
-                // Movement range
-                const originX = char.x, originY = char.y;
-                for (let dy = -range; dy <= range; dy++) for (let dx = -range; dx <= range; dx++) {
-                    if (Math.abs(dx) + Math.abs(dy) <= range) {
-                        const targetX = originX + dx, targetY = originY + dy;
-                        if (targetX >= 0 && targetX < BOARD_SIZE && targetY >= 0 && targetY < BOARD_SIZE) validCells.add(`${targetX},${targetY}`);
-                    }
-                }
             }
 
-            const className = isAttack ? 'attack-range-skill' : (isHeal ? 'heal-range-skill' : 'attack-range-move');
+            const className = isMove ? 'attack-range-move' : (isHealOrSupport ? 'heal-range-skill' : 'attack-range-skill');
             validCells.forEach(coord => {
                 const [x, y] = coord.split(',');
                 document.querySelector(`.cell[data-x='${x}'][data-y='${y}']`)?.classList.add('combat-range', className);
@@ -1085,8 +1799,6 @@
             
             const renderCard = (char) => {
                 const isSelected = char.id === selectedCharacterId, isPlaced = char.x !== null, isDead = char.hp <= 0, isEnemy = char.type === 'ENEMY';
-                
-                // Only PCs can be dragged from the overlay if unplaced, or if admin mode is active AND admin move is allowed
                 const canBeDragged = (!isEnemy && (gameState === 'PREPARATION' && !isDead)) || (!isPlaced && !isDead) || (isAdmin && isAdminMoveAllowed);
                 
                 const charCard = document.createElement('div');
@@ -1137,7 +1849,6 @@
                 return;
             }
 
-            // 1. Authorization check
             if (!selectedChar || !canControlSelectedChar) { 
                 if (selectedChar) {
                     skillControls.innerHTML = `<p class="text-sm text-gray-400">현재 ${selectedChar.name}의 턴이 아니거나, 제어 권한이 없습니다.</p>`;
@@ -1147,7 +1858,6 @@
                 return; 
             }
             
-            // 2. Dead/Unplaced check (Authorized user is trying to control this character)
             if (selectedChar.hp <= 0 || selectedChar.x === null) { 
                 skillControls.innerHTML = `<p class="text-sm text-gray-500">${selectedChar.hp <= 0 ? '사망함' : '미배치 상태'}</p>`; 
                 return; 
@@ -1155,24 +1865,65 @@
 
             let html = `<h3 class="text-lg font-bold mb-2 ${selectedChar.type === 'ENEMY' ? 'text-red-400' : 'text-green-400'}">${selectedChar.name} 행동</h3>`;
 
-            // 3. Turn Phase & Action setup
+            // Display current MP
+            html += `<p class="text-sm font-semibold text-blue-400 mb-3">MP: ${selectedChar.mp}/${selectedChar.maxMp}</p>`;
+
             if (isTurnCharacter) {
                 if (turnPhase === 'MOVE') {
-                    html += `<p class="text-sm text-gray-400">이동할 위치를 선택하거나, 캐릭터를 클릭하여 이동을 건너뛰세요.</p>`;
-                } else { // ACTION phase
+                    html += `<p class="text-sm text-gray-400">이동할 위치를 선택하거나, 캐릭터 위의 '▼'를 클릭하여 이동을 건너뛰세요.</p>`;
+                } else { 
                     html += `<div class="flex flex-wrap gap-2">`;
+                    
+                    // Separate skills by category for display
+                    const categorizedSkills = { Attack: [], Support: [], Heal: [], Utility: [] };
                     selectedChar.skills.forEach(id => {
                         const skill = SKILLS[id];
-                        if(skill) {
-                            const isHealSkill = skill.type === 'Heal';
-                            const ringColor = isHealSkill ? 'ring-green-400' : 'ring-red-400';
-                            html += `<button data-skill-id="${id}" class="skill-btn ${selectedSkill === id ? `ring-2 ${ringColor}` : ''} bg-gray-700 hover:bg-gray-600 text-white p-2 flex items-center gap-2">${skill.icon} ${skill.name}</button>`;
+                        if (skill && skill.category) {
+                            if (categorizedSkills[skill.category]) {
+                                categorizedSkills[skill.category].push(skill);
+                            }
                         }
                     });
+
+                    // Render Action Skills first (Attack, Heal, Support)
+                    ['Attack', 'Heal', 'Support', 'Utility'].forEach(category => {
+                        if (categorizedSkills[category].length > 0) {
+                            // Add a separator for better visual grouping (optional)
+                            // if (category !== 'Attack' && category !== 'Utility') { html += `<hr class="w-full my-1 border-gray-700/50">`; }
+
+                            categorizedSkills[category].forEach(skill => {
+                                const isMoveSkill = skill.id === 'move' && skill.category === 'Utility';
+                                
+                                // Only show Utility skills (like Fast Move, or specific ranged movement) in ACTION phase if explicitly added by user, and not the default 'move' skill which is handled by the board highlight during MOVE phase.
+                                // If we are in the ACTION phase, we allow utility spells, including specific move options.
+                                if (isMoveSkill && category === 'Utility' && turnPhase === 'ACTION') {
+                                    return; // Skip default move in ACTION buttons
+                                }
+                                
+                                const isActionSkill = category !== 'Utility' || isMoveSkill;
+
+                                const isHealSupport = category === 'Heal' || category === 'Support';
+                                const ringColor = isHealSupport ? 'ring-green-400' : 'ring-red-400';
+                                
+                                const canUse = selectedChar.mp >= skill.mpCost && (skill.hpCost === undefined || selectedChar.hp > skill.hpCost);
+                                const disabledClass = canUse ? '' : 'opacity-50 cursor-not-allowed';
+                                
+                                let costText = "";
+                                if (skill.mpCost > 0) costText += ` MP ${skill.mpCost}`;
+                                if (skill.hpCost > 0) costText += ` HP ${skill.hpCost}`;
+                                if (costText) costText = `[${costText.trim()}]`;
+
+                                html += `<button data-skill-id="${skill.id}" data-category="${skill.category}" class="skill-btn ${selectedSkill === skill.id ? `ring-2 ${ringColor}` : ''} bg-gray-700 hover:bg-gray-600 text-white p-2 flex items-center flex-col text-xs font-semibold ${disabledClass}" ${canUse ? '' : 'disabled'}>
+                                    ${skill.icon} ${skill.name}
+                                    <span class="text-gray-400 text-xs">${costText}</span>
+                                    </button>`;
+                            });
+                        }
+                    });
+                    
                     html += `</div><button id="undo-move-btn" class="w-full mt-2 bg-gray-500 hover:bg-gray-600 text-white p-2">↩️ 이동 취소</button>`;
                 }
 
-                // Show End Turn button if it's the current turn and we are authorized.
                 html += `<button id="end-turn-btn" class="w-full mt-4 bg-yellow-600 hover:bg-yellow-700 text-white p-2 font-bold">턴 종료</button>`;
                 
                 if (isAdmin) {
@@ -1180,38 +1931,123 @@
                 }
 
             } else if (isAdmin) {
-                 // Admin is controlling a non-turn character
                 html += `<p class="text-sm text-purple-400 mt-4">관리자 모드: 턴 제약 없음</p>`;
             } else {
-                 // Should not happen due to initial check, but as a fallback
                 html += `<p class="text-sm text-gray-400 mt-4">${selectedChar.name}의 차례가 아닙니다.</p>`;
             }
             
             skillControls.innerHTML = html;
             document.getElementById('end-turn-btn')?.addEventListener('click', nextTurn);
             document.getElementById('undo-move-btn')?.addEventListener('click', undoMove);
-            document.querySelectorAll('.skill-btn').forEach(btn => btn.onclick = (e) => { selectedSkill = e.currentTarget.dataset.skillId; render(); });
+            document.querySelectorAll('.skill-btn').forEach(btn => btn.onclick = (e) => { 
+                selectedSkill = e.currentTarget.dataset.skillId; 
+                // If it's a utility skill, we must switch to MOVE phase to highlight the range correctly.
+                if (e.currentTarget.dataset.category === 'Utility') {
+                    // Check if this Utility skill allows movement (range > 0)
+                    const skillId = e.currentTarget.dataset.skillId;
+                    if (SKILLS[skillId]?.range > 0) {
+                        turnPhase = 'MOVE';
+                    }
+                } else {
+                    turnPhase = 'ACTION';
+                }
+                render(); 
+            });
         }
         
         function updateCharacterList() {
             const listContent = document.getElementById('char-list-content');
             listContent.innerHTML = '';
+            
+            const remainingPC = characters.filter(c => c.type === 'PC' && c.hp > 0 && c.x !== null).length;
+            const remainingEnemy = characters.filter(c => c.type === 'ENEMY' && c.hp > 0 && c.x !== null).length;
+
+            // Use the new class for styling
+            document.getElementById('pc-count').textContent = remainingPC;
+            document.getElementById('enemy-count').textContent = remainingEnemy;
+            document.getElementById('pc-count').classList.add('summary-count');
+            document.getElementById('enemy-count').classList.add('summary-count');
+
             if (!gameId || characters.length === 0) { listContent.innerHTML = `<p class="text-sm text-gray-400">${!gameId ? '게임에 참여해주세요...' : '캐릭터 로딩 중...'}</p>`; return; }
             
             const currentTurnChar = characters[currentTurnIndex];
             characters.forEach(char => {
                 const isTurnChar = currentTurnChar && char.id === currentTurnChar.id && gameState === 'STARTED';
                 const charItem = document.createElement('div');
-                charItem.className = `p-2 rounded-md flex items-center justify-between cursor-pointer ${char.id === selectedCharacterId ? 'ring-2 ring-green-400' : 'hover:bg-gray-800'} ${isTurnChar && char.x !== null && char.hp > 0 ? 'turn-highlight' : ''}`;
+                charItem.className = `p-2 rounded-md flex flex-col cursor-pointer ${char.id === selectedCharacterId ? 'ring-2 ring-green-400' : 'hover:bg-gray-800'} ${isTurnChar && char.x !== null && char.hp > 0 ? 'turn-highlight' : ''}`;
                 
                 let statusColor = char.hp <= 0 ? 'text-gray-500' : (char.type === 'ENEMY' ? 'text-red-400' : 'text-gray-300');
                 if (isTurnChar && char.x !== null && char.hp > 0) statusColor = 'text-yellow-400';
                 
-                charItem.innerHTML = `<div class="flex items-center gap-2"><img src="${char.imageUrl || ''}" onerror="this.src='https://placehold.co/32x32/1f2937/a0aec0?text=${char.name.charAt(0)}'" class="w-8 h-8 rounded-full object-cover"><span class="font-semibold truncate">${char.name}</span></div><span class="text-xs ${statusColor}">${char.hp <= 0 ? '사망' : (char.x !== null ? `HP: ${char.hp}/${char.maxHp}` : '미배치')}</span>`;
-                charItem.onclick = () => { if (char.hp > 0) { selectedCharacterId = char.id; if(gameState === 'STARTED'){ turnPhase = 'MOVE'; selectedSkill = 'move'; preMovePosition = { x: char.x, y: char.y }; } render(); } };
+                charItem.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <img src="${char.imageUrl || ''}" onerror="this.src='https://placehold.co/32x32/1f2937/a0aec0?text=${char.name.charAt(0)}'" class="w-8 h-8 rounded-full object-cover">
+                            <span class="font-semibold truncate">${char.name}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs ${statusColor}">${char.hp <= 0 ? '사망' : (char.x !== null ? `HP: ${char.hp}/${char.maxHp}` : '미배치')}</span>
+                            ${isAdmin ? `<button data-char-id="${char.id}" class="delete-char-btn text-red-500 hover:text-red-400 text-xs ml-2 p-1 rounded-sm border border-red-500 hover:border-red-400">삭제</button>` : ''}
+                        </div>
+                    </div>
+                `;
+                // REMOVE HP/MP BARS HERE
+                charItem.onclick = () => { if (char.hp > 0 || isAdmin) { selectedCharacterId = char.id; if(gameState === 'STARTED'){ turnPhase = 'MOVE'; selectedSkill = 'move'; preMovePosition = { x: char.x, y: char.y }; } render(); } };
                 listContent.appendChild(charItem);
             });
+
+            if (isAdmin) {
+                document.querySelectorAll('.delete-char-btn').forEach(btn => {
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        const charIdToDelete = e.currentTarget.dataset.charId;
+                        const charName = characters.find(c => c.id === charIdToDelete)?.name || 'Unknown Character';
+                        showCustomModal("캐릭터 삭제 확인", `정말로 **${charName}**을(를) 삭제하시겠습니까? (되돌릴 수 없습니다!)`, [
+                            { text: "취소", class: "bg-gray-600" },
+                            { text: "삭제", class: "bg-red-600", onClick: () => deleteCharacter(charIdToDelete, charName) }
+                        ]);
+                    };
+                });
+            }
         }
+
+        async function deleteCharacter(charId, charName) {
+            if (gameId) {
+                await deleteDoc(doc(db, 'games', gameId, 'characters', charId));
+                await logAction(`🔥 관리자가 **${charName}** 캐릭터를 삭제했습니다.`, "admin");
+                // Reset selected character if it was the one deleted
+                if (selectedCharacterId === charId) selectedCharacterId = null;
+                if (loggedInCharId === charId) handleLogout();
+            }
+        }
+        
+        async function deleteSkill(skillId, skillName) { // NEW: Delete Skill Function
+             if (!gameId || !isAdmin) return;
+             
+             // 1. Remove skill from global skills map
+             const newSkills = { ...SKILLS };
+             delete newSkills[skillId];
+             
+             // 2. Remove skill from all characters that possess it
+             const batch = writeBatch(db);
+             characters.forEach(char => {
+                 if (char.skills.includes(skillId)) {
+                     const newCharSkills = char.skills.filter(s => s !== skillId);
+                     const charRef = doc(db, 'games', gameId, 'characters', char.id);
+                     batch.update(charRef, { skills: newCharSkills });
+                 }
+             });
+             
+             // 3. Update global skills map
+             batch.set(doc(db, 'games', gameId), { skills: newSkills }, { merge: true });
+             
+             await batch.commit();
+             await logAction(`🔥 관리자가 **${skillName}** 스킬을 삭제했습니다.`, "admin");
+             
+             if (selectedSkill === skillId) selectedSkill = null;
+             openAdminModal(); // Re-open admin modal to refresh list
+        }
+
 
         function renderLogs(logs) {
             const logList = document.getElementById('game-log-list');
@@ -1226,7 +2062,13 @@
             
             document.querySelectorAll('.cell').forEach(cell => { 
                 cell.innerHTML = ''; 
-                cell.classList.remove('enemy-threat-range'); 
+                cell.classList.remove('enemy-threat-range', 'tile-obstacle', 'tile-damage'); 
+                const x = parseInt(cell.dataset.x);
+                const y = parseInt(cell.dataset.y);
+                const tile = boardTiles[`${x},${y}`];
+                if (tile && tile.type !== 'normal') {
+                    cell.classList.add(`tile-${tile.type}`);
+                }
             });
 
             const currentTurnChar = characters.length > 0 ? characters[currentTurnIndex] : null;
@@ -1239,21 +2081,43 @@
                     token.className = 'character-token';
                     if (char.type === 'ENEMY') token.classList.add('enemy-token');
                     
-                    // Apply visual size if larger than 1x1
                     token.style.width = `${char.size * 100}%`;
                     token.style.height = `${char.size * 100}%`;
 
                     if (char.hp <= 0) token.style.filter = 'grayscale(100%) opacity(0.5)';
                     if(char.imageUrl) token.style.backgroundImage = `url(${char.imageUrl})`; else token.innerHTML = `<span class="token-placeholder font-title">${char.name.charAt(0)}</span>`;
                     token.dataset.charId = char.id;
-                    const hpPercent = (char.hp / char.maxHp) * 100;
-                    token.innerHTML += `<div class="absolute bottom-0 left-0 w-full h-1 bg-gray-900/70 rounded-b-full overflow-hidden"><div style="width: ${hpPercent}%;" class="h-full ${hpPercent > 50 ? 'bg-green-500' : hpPercent > 20 ? 'bg-yellow-500' : 'bg-red-500'}"></div></div>`;
                     
-                    // --- Turn Marker Insertion ---
+                    const hpPercent = (char.hp / char.maxHp) * 100;
+                    const mpPercent = (char.mp / char.maxMp) * 100;
+
+                    // HP/MP Bars
+                    token.innerHTML += `
+                        <div class="hp-mp-bar-container">
+                            <div class="hp-bar"><div class="hp-fill" style="width: ${hpPercent}%;"></div></div>
+                            <div class="mp-bar"><div class="mp-fill" style="width: ${mpPercent}%;"></div></div>
+                        </div>
+                    `;
+                    
+                    // --- Turn Marker Insertion (for skipping move) ---
                     if (gameState === 'STARTED' && currentTurnChar && char.id === currentTurnChar.id && char.hp > 0) {
                          const marker = document.createElement('div');
                          marker.className = 'turn-marker';
-                         marker.innerHTML = '▼'; // Downward pointing triangle/arrow
+                         marker.innerHTML = '▼';
+                         marker.dataset.charId = char.id; // Add ID for click handling
+                         marker.onclick = (e) => {
+                             e.stopPropagation();
+                             const charId = e.currentTarget.dataset.charId;
+                             // Check if the current user has control over this char
+                             if (canControlCharacter(charId) && turnPhase === 'MOVE') {
+                                 selectedCharacterId = charId; // Ensure selected
+                                 turnPhase = 'ACTION'; // Skip move phase
+                                 selectedSkill = null;
+                                 preMovePosition = { x: char.x, y: char.y };
+                                 logAction(`⏩ ${char.name}이(가) 이동 단계를 건너뛰었습니다.`, "system");
+                                 render();
+                             }
+                         };
                          token.appendChild(marker);
                     }
                     // --- End Turn Marker Insertion ---
@@ -1270,14 +2134,30 @@
                  turnStatus.textContent = currentTurnChar ? `Round ${round} - ${currentTurnChar.name}` : (gameId ? "배치 대기 중..." : "게임 시작 대기 중...");
                 if(currentTurnChar) turnStatus.style.color = currentTurnChar.type === 'ENEMY' ? '#f87171' : '#34d399';
             }
+
+            // Apply new stylish class to turn status box
+            document.getElementById('turn-status').classList.add('stylish-turn-box');
             
             const selectedChar = characters.find(c => c.id === selectedCharacterId);
             const isMyTurn = selectedChar && currentTurnChar && selectedChar.id === currentTurnChar.id;
 
             if (gameState === 'STARTED') {
                 const canControl = isAdmin || (isMyTurn && selectedChar?.id === loggedInCharId);
-                if (canControl && selectedChar) {
-                    highlightRange(selectedChar, turnPhase === 'MOVE' ? 'move' : selectedSkill);
+                // NEW: Determine effective skill for range highlighting. If in MOVE phase, use 'move' or the selected Utility skill.
+                let effectiveSkillId = 'move';
+                // Check for character-specific move range
+                if (selectedChar && selectedChar.moveRange !== undefined && SKILLS['move']) {
+                     SKILLS['move'].range = selectedChar.moveRange;
+                }
+                
+                if (turnPhase === 'MOVE' && selectedSkill && SKILLS[selectedSkill]?.category === 'Utility') {
+                    effectiveSkillId = selectedSkill;
+                } else if (turnPhase === 'ACTION' && selectedSkill) {
+                    effectiveSkillId = selectedSkill;
+                }
+                
+                if (canControl && selectedChar && effectiveSkillId) {
+                    highlightRange(selectedChar, effectiveSkillId);
                 } else {
                     highlightRange(null, null);
                 }
@@ -1290,6 +2170,18 @@
             renderCharacterSelectionOverlay();
         }
 
+        // NEW: Function to remove character placement
+        async function removeCharacterPlacement(charId, charName) {
+            if (gameId) {
+                await updateDoc(doc(db, 'games', gameId, 'characters', charId), { x: null, y: null });
+                await logAction(`↩️ ${charName}이(가) 보드에서 배치 해제되었습니다.`, "admin");
+                if (selectedCharacterId === charId) selectedCharacterId = null;
+                closeModal('profile-modal');
+                render();
+            }
+        }
+
+
         window.openProfileModal = (charId) => openProfileModal(characters.find(c => c.id === charId));
         
         function openProfileModal(character, editMode = false) {
@@ -1297,26 +2189,53 @@
             const contentContainer = profileModal.querySelector('#modal-content');
             const isEnemy = character.type === 'ENEMY';
             
+            // Authorization Check for action buttons in profile modal
+            const canUnplace = isAdmin || (loggedInCharId === character.id && character.type === 'PC' && gameState === 'PREPARATION');
+            
             if (editMode) {
-                const skillOptions = Object.values(SKILLS).filter(s => s.type !== 'Utility');
-                const skillSelects = [1, 2, 3].map(index => {
+                // Admin Edit Mode
+                 const skillOptions = Object.values(SKILLS); // Include all skills now
+                const skillSelects = [1, 2, 3, 4, 5].map(index => { // Increased skill slots for management
                     const currentSkill = character.skills?.[index - 1] || 'none';
-                    return `<div><label class="text-sm text-gray-400">스킬 ${index}</label><select id="edit-skill-${index}" class="form-input mt-1"><option value="none">-- 없음 --</option>${skillOptions.map(skill => `<option value="${skill.id}" ${skill.id === currentSkill ? 'selected' : ''}>${skill.name}</option>`).join('')}</select></div>`;
+                    return `<div><label class="text-sm text-gray-400">스킬 ${index}</label><select id="edit-skill-${index}" class="form-input mt-1"><option value="none">-- 없음 --</option>${skillOptions.map(skill => `<option value="${skill.id}" ${skill.id === currentSkill ? 'selected' : ''}>${skill.name} (${skill.category})</option>`).join('')}</select></div>`;
                 }).join('');
                 
-                contentContainer.innerHTML = `<div class="profile-modal-container rounded-lg ${isEnemy ? 'enemy-profile' : ''}">
-                    <div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold font-title text-accent-primary">수정: ${character.name}</h3><button id="close-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button></div>
-                    <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-4">
-                        <div><label class="text-gray-400">이름</label><input id="edit-name" class="form-input mt-1" value="${character.name}"></div>
-                        <div><label class="text-gray-400">이미지 URL</label><input id="edit-image-url" class="form-input mt-1" value="${character.imageUrl || ''}"></div>
-                        ${character.type === 'PC' ? `<div><label class="text-gray-400">PC 비밀번호</label><input id="edit-password" type="text" class="form-input mt-1" value="${character.password || DEFAULT_PC_PASSWORD}"></div>` : ''}
-                        <div class="grid grid-cols-2 gap-4">
-                            <div><label class="text-gray-400">HP</label><input id="edit-hp" type="number" class="form-input mt-1" value="${character.hp}"></div><div><label class="text-gray-400">최대 HP</label><input id="edit-max-hp" type="number" class="form-input mt-1" value="${character.maxHp}"></div>
-                            <div><label class="text-gray-400">최소 공격력</label><input id="edit-min-attack" type="number" class="form-input mt-1" value="${character.minAttack}"></div><div><label class="text-gray-400">최대 공격력</label><input id="edit-max-attack" type="number" class="form-input mt-1" value="${character.maxAttack}"></div>
-                            <div><label class="text-gray-400">최소 방어력</label><input id="edit-min-defense" type="number" class="form-input mt-1" value="${character.minDefense}"></div><div><label class="text-gray-400">최대 방어력</label><input id="edit-max-defense" type="number" class="form-input mt-1" value="${character.maxDefense}"></div>
-                            <div><label class="text-gray-400">크기 (예: 1, 2)</label><input id="edit-size" type="number" class="form-input mt-1" value="${character.size || 1}"></div>
-                        </div><h4 class="text-lg font-bold text-gray-300 pt-4">스킬 선택</h4><div class="grid grid-cols-3 gap-4">${skillSelects}</div>
-                    </div><div class="mt-8 flex gap-4"><button id="save-changes-btn" class="w-full bg-green-600 font-bold py-3">저장</button><button id="cancel-edit-btn" class="w-full bg-gray-600 font-bold py-3">취소</button></div></div>`;
+                const currentMoveRange = character.moveRange !== undefined 
+                    ? character.moveRange 
+                    : SKILLS['move']?.range || 2;
+                
+                contentContainer.innerHTML = `<div class="profile-modal-container rounded-lg ${isEnemy ? 'enemy-profile' : ''}" style="grid-template-columns: 1fr;">
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold font-title text-accent-primary">수정: ${character.name}</h3><button id="close-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button></div>
+                        <div class="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
+                            <div><label class="text-gray-400">이름</label><input id="edit-name" class="form-input mt-1" value="${character.name}"></div>
+                            <div><label class="text-gray-400">이미지 URL</label><input id="edit-image-url" class="form-input mt-1" value="${character.imageUrl || ''}"></div>
+                            ${character.type === 'PC' ? `<div><label class="text-gray-400">PC 비밀번호</label><input id="edit-password" type="text" class="form-input mt-1" value="${character.password || DEFAULT_PC_PASSWORD}"></div>` : ''}
+                            <div class="grid grid-cols-3 gap-4">
+                                <div><label class="text-gray-400">HP</label><input id="edit-hp" type="number" class="form-input mt-1" value="${character.hp}"></div><div><label class="text-gray-400">최대 HP</label><input id="edit-max-hp" type="number" class="form-input mt-1" value="${character.maxHp}"></div>
+                                <div><label class="text-gray-400">MP</label><input id="edit-mp" type="number" class="form-input mt-1" value="${character.mp}"></div><div><label class="text-gray-400">최대 MP</label><input id="edit-max-mp" type="number" class="form-input mt-1" value="${character.maxMp}"></div>
+                                <div><label class="text-gray-400">최소 공격력</label><input id="edit-min-attack" type="number" class="form-input mt-1" value="${character.minAttack}"></div><div><label class="text-gray-400">최대 공격력</label><input id="edit-max-attack" type="number" class="form-input mt-1" value="${character.maxAttack}"></div>
+                                <div><label class="text-gray-400">최소 방어력</label><input id="edit-min-defense" type="number" class="form-input mt-1" value="${character.minDefense}"></div><div><label class="text-gray-400">최대 방어력</label><input id="edit-max-defense" type="number" class="form-input mt-1" value="${character.maxDefense}"></div>
+                                <div><label class="text-gray-400">크기 (예: 1, 2)</label><input id="edit-size" type="number" class="form-input mt-1" value="${character.size || 1}"></div>
+                                <div><label class="text-gray-400">턴 순서</label><input id="edit-order" type="number" class="form-input mt-1" value="${character.turnOrder}"></div>
+                            </div>
+                            <h4 class="text-lg font-bold text-gray-300 pt-4">스킬 선택</h4>
+                            <div class="grid grid-cols-3 gap-4">${skillSelects}</div>
+                            <!-- NEW: Move Range Adjustment (only visible if the character has the default 'move' skill) -->
+                            ${character.skills.includes('move') ? 
+                                `
+                                <h4 class="text-lg font-bold text-gray-300 pt-4 border-t border-gray-700/50">행동력 조정</h4>
+                                <div>
+                                    <label class="text-gray-400">이동력 ('move' 스킬 범위)</label>
+                                    <input id="edit-move-range" type="number" class="form-input mt-1" value="${currentMoveRange}">
+                                </div>
+                                ` : ''}
+                        </div>
+                        <div class="mt-8 flex gap-4 flex-shrink-0">
+                           <button id="save-changes-btn" class="w-full bg-green-600 font-bold py-3">저장</button><button id="cancel-edit-btn" class="w-full bg-gray-600 font-bold py-3">취소</button>
+                        </div>
+                    </div>
+                </div>`;
                 
                 document.getElementById('save-changes-btn').onclick = async () => {
                     const updates = { 
@@ -1324,39 +2243,60 @@
                         imageUrl: document.getElementById('edit-image-url').value.trim(), 
                         hp: parseInt(document.getElementById('edit-hp').value), 
                         maxHp: parseInt(document.getElementById('edit-max-hp').value), 
+                        mp: parseInt(document.getElementById('edit-mp').value), 
+                        maxMp: parseInt(document.getElementById('edit-max-mp').value), 
                         minAttack: parseInt(document.getElementById('edit-min-attack').value),
                         maxAttack: parseInt(document.getElementById('edit-max-attack').value),
                         minDefense: parseInt(document.getElementById('edit-min-defense').value),
                         maxDefense: parseInt(document.getElementById('edit-max-defense').value),
-                        size: parseInt(document.getElementById('edit-size').value) || 1, 
-                        skills: [document.getElementById('edit-skill-1').value, document.getElementById('edit-skill-2').value, document.getElementById('edit-skill-3').value].filter(s => s && s !== 'none') 
+                        size: parseInt(document.getElementById('edit-size').value) || 1,
+                        turnOrder: parseInt(document.getElementById('edit-order').value) || 99, 
+                        skills: [
+                            document.getElementById('edit-skill-1').value, 
+                            document.getElementById('edit-skill-2').value, 
+                            document.getElementById('edit-skill-3').value,
+                            document.getElementById('edit-skill-4').value,
+                            document.getElementById('edit-skill-5').value
+                        ].filter(s => s && s !== 'none') 
                     };
-                    if (character.type === 'PC') updates.password = document.getElementById('edit-password').value; // Save password
+                    if (character.type === 'PC') updates.password = document.getElementById('edit-password').value;
+
+                    // NEW: Update 'move' skill range for this specific character if changed.
+                    if (character.skills.includes('move')) {
+                        const newMoveRange = parseInt(document.getElementById('edit-move-range').value) || 2;
+                        updates.moveRange = newMoveRange;
+                    }
                     
                     if (gameId) await updateDoc(doc(db, 'games', gameId, 'characters', character.id), updates);
                     openProfileModal({...character, ...updates}, false);
                 };
                 document.getElementById('cancel-edit-btn').onclick = () => openProfileModal(character, false);
             } else {
-                // Improved icons for Attack and Size
+                // View mode HTML
                 const statIcon = (type) => ({
                     hp: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>`,
                     defense: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z" /></svg>`,
+                    mp: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 10v2h14v-2H5z"></path></svg>`,
                 }[type] || '');
-
-                // Use a proper sword icon for attack
                 const attackIconSvg = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 12H4M17 12h3"></path></svg>`;
-                
-                // Use a block icon for size
                 const sizeIconSvg = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>`;
+                const moveIconSvg = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>`;
+
 
                 const buildStat = (type, label, value) => {
                     let iconHtml = statIcon(type);
                     if (type === 'attack') iconHtml = attackIconSvg;
                     if (type === 'size') iconHtml = sizeIconSvg;
+                    if (type === 'move') iconHtml = moveIconSvg;
                     return `<div class="stat-item">${iconHtml}<div><div class="value">${value}</div><div class="label">${label}</div></div></div>`;
                 }
                 
+                // Get effective move range (check if moveRange is set on character, otherwise fall back to global move skill range)
+                const effectiveMoveRange = character.moveRange !== undefined 
+                    ? character.moveRange 
+                    : SKILLS['move']?.range || 2;
+
+
                 contentContainer.innerHTML = `<div class="profile-modal-container rounded-lg ${isEnemy ? 'enemy-profile' : ''}">
                     <button id="close-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button>
                     <div class="profile-char-image" style="background-image: url('${character.imageUrl || `https://placehold.co/400x600/1a1a1a/444444?text=${character.name.charAt(0)}`}')"></div>
@@ -1367,23 +2307,41 @@
                                 <p class="profile-char-type">${character.type}</p>
                                 <div class="profile-stats-grid">
                                     ${buildStat('hp', '생명력', `${character.hp} / ${character.maxHp}`)}
+                                    ${buildStat('mp', '마나', `${character.mp} / ${character.maxMp}`)}
                                     ${buildStat('attack', '공격력', `${character.minAttack} - ${character.maxAttack}`)}
                                     ${buildStat('defense', '방어력', `${character.minDefense} - ${character.maxDefense}`)}
+                                    ${buildStat('move', '이동력', `${effectiveMoveRange} 칸`)}
                                     ${buildStat('size', '크기', `${character.size}x${character.size}`)}
                                 </div>
                             </div>
                             <div class="mt-6">
                                 <h3 class="text-xl font-bold mb-3">보유 스킬</h3>
                                 <div class="space-y-2">
-                                    ${character.skills.map(id => SKILLS[id]).filter(Boolean).map(s => `<div class="p-3 bg-gray-800/50 rounded-md flex items-center gap-3"><span class="text-2xl">${s.icon}</span><div><strong>${s.name}</strong><small class="block text-gray-400">${s.isAoe ? `광역(범위: ${s.aoeRange})` : `단일`}, 사거리: ${s.range}</small></div></div>`).join('') || '<p class="text-gray-500">보유 스킬이 없습니다.</p>'}
+                                    ${character.skills.map(id => SKILLS[id]).filter(Boolean).map(s => {
+                                        let costText = "";
+                                        if (s.mpCost > 0) costText += `${s.mpCost} MP `;
+                                        if (s.hpCost > 0) costText += `${s.hpCost} HP `;
+                                        return `<div class="p-3 bg-gray-800/50 rounded-md flex items-center gap-3">
+                                            <span class="text-2xl">${s.icon}</span>
+                                            <div>
+                                                <strong>${s.name} <span class="text-xs text-gray-500">(${s.category})</span></strong>
+                                                <small class="block text-gray-400">
+                                                    ${s.isAoe ? `광역(범위: ${s.aoeRange})` : `단일`}, 사거리: ${s.range}
+                                                    ${costText ? `| 비용: ${costText}` : ''}
+                                                </small>
+                                            </div>
+                                        </div>`;
+                                    }).join('') || '<p class="text-gray-500">보유 스킬이 없습니다.</p>'}
                                 </div>
                             </div>
                         </div>
-                        <div class="mt-auto pt-4 flex-shrink-0">
+                        <div class="mt-auto pt-4 flex-shrink-0 space-y-3">
                            <button id="edit-char-btn" class="w-full bg-gray-600 hover:bg-gray-700 font-bold py-3 px-4">캐릭터 수정</button>
+                           ${(character.x !== null && canUnplace) ? `<button id="unplace-char-btn" class="w-full bg-red-700 hover:bg-red-600 font-bold py-3 px-4">보드에서 배치 해제</button>` : ''}
                         </div>
                     </div>
                 </div>`;
+                
                 document.getElementById('edit-char-btn').onclick = () => {
                     if (isAdmin) {
                         openProfileModal(character, true);
@@ -1391,14 +2349,101 @@
                         showCustomModal("권한 부족", "캐릭터 정보 수정은 관리자만 가능합니다.", [{text:"확인", class:"bg-red-600"}]);
                     }
                 };
+                
+                const unplaceBtn = document.getElementById('unplace-char-btn');
+                if (unplaceBtn) {
+                     unplaceBtn.onclick = () => {
+                        showCustomModal("배치 해제 확인", `${character.name}을(를) 보드에서 해제하고 선택창으로 되돌리시겠습니까?`, [
+                            { text: "취소", class: "bg-gray-600" },
+                            { text: "해제", class: "bg-red-600", onClick: () => removeCharacterPlacement(character.id, character.name) }
+                        ]);
+                    };
+                }
             }
             profileModal.classList.remove('hidden');
             document.getElementById('close-modal-btn').onclick = () => closeModal('profile-modal');
         }
         function closeModal(modalId) { document.getElementById(modalId).classList.add('hidden'); }
         
+        // --- Admin Functions ---
+        
+        async function resetBoardPositions() {
+            if (!gameId) return;
+            const batch = writeBatch(db);
+            characters.forEach(char => {
+                const charRef = doc(db, 'games', gameId, 'characters', char.id);
+                batch.update(charRef, { x: null, y: null });
+            });
+            await batch.commit();
+            await logAction("🔄 관리자가 모든 캐릭터를 미배치 상태로 되돌렸습니다.", "admin");
+            selectedCharacterId = null;
+            render();
+        }
+
+        async function resetAllGameData() {
+            if (!gameId) return;
+            await resetBoardPositions();
+            await seedInitialCharacters(gameId);
+            await setDoc(doc(db, 'games', gameId, 'board', 'tiles'), { tiles: {} });
+            await setDoc(doc(db, 'games', gameId), { gameState: 'PREPARATION', currentTurnIndex: 0, currentTurnCharId: null, round: 1 }, { merge: true });
+            await logAction("⚠️ 관리자가 전체 게임을 초기화했습니다. 캐릭터 목록과 맵이 기본 상태로 복원됩니다.", "admin");
+        }
+
+        // --- Map Edit Close Functions (Refactored) ---
+        
+        // 1. 맵 편집 모드를 완전히 끄는 함수 (isMapEditMode = false)
+        function confirmExitMapEditMode() {
+            isMapEditMode = false; // Mode OFF
+            closeModal('map-edit-modal');
+            logAction("🗺️ 관리자가 맵 편집 모드를 종료했습니다.", "admin");
+            updateAuthStatus();
+        }
+
+        // 2. 맵 편집 팝업만 일시적으로 숨기는 함수 (isMapEditMode = true 유지)
+        function hideMapEditModalTemporarily() {
+            closeModal('map-edit-modal');
+            // isMapEditMode 상태는 변경하지 않습니다.
+            updateAuthStatus();
+        }
+        
+        // 맵 편집 모드 ON
+        function openMapEditModal() {
+            if (!isAdmin || gameState !== 'PREPARATION') {
+                 showCustomModal("권한 오류", "맵 편집은 관리자만, 그리고 게임 준비 단계에서만 가능합니다.", [{text:"확인", class:"bg-red-600"}]);
+                 return;
+            }
+            // 맵 편집 모드를 열 때 관리자 패널을 닫습니다.
+            closeModal('admin-modal'); 
+
+            isMapEditMode = true;
+            currentTileType = 'normal';
+            mapEditModal.classList.remove('hidden');
+            document.getElementById('map-edit-status').textContent = '현재 선택: 일반 칸';
+            updateAuthStatus();
+        }
+
+        async function saveBoardTile(x, y, type) {
+            if (!gameId) return;
+            const tileKey = `${x},${y}`;
+            const newTiles = { ...boardTiles };
+
+            if (type === 'normal') {
+                delete newTiles[tileKey];
+            } else {
+                newTiles[tileKey] = { type };
+            }
+            
+            await setDoc(doc(db, 'games', gameId, 'board', 'tiles'), { tiles: newTiles });
+            await logAction(`🗺️ 관리자가 (${x}, ${y}) 칸을 ${type === 'obstacle' ? '장애물(🚫)' : (type === 'damage' ? '대미지 칸(🩸)' : '일반 칸')}으로 설정했습니다.`, "admin");
+        }
+
         function openAdminModal() {
             if (!gameId) return;
+
+            // 관리자 패널을 열 때 맵 편집 모달을 닫습니다.
+            closeModal('map-edit-modal'); 
+            // isMapEditMode는 Map Edit Modal의 종료 버튼에 의해서만 false로 바뀝니다.
+            
             const container = document.getElementById('admin-modal-content');
             container.innerHTML = `<div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold font-title" style="color: var(--accent-primary);">관리자 패널</h3><button id="close-admin-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button></div>`;
 
@@ -1410,6 +2455,19 @@
                     <button id="set-start-phase-btn" class="w-full bg-green-600 p-2">게임 시작</button>
                     <button id="prev-turn-btn" class="w-full bg-gray-600 p-2">이전 턴으로</button>
                     <button id="next-turn-btn" class="w-full bg-gray-600 p-2">다음 턴으로</button>
+                </div>
+                
+                <div class="mt-6 p-3 border border-gray-600 rounded-md">
+                    <h5 class="text-sm font-bold text-indigo-400 mb-2">배경 음악 설정</h5>
+                    <input type="text" id="admin-music-url-input" placeholder="유튜브 URL 또는 ID" class="form-input mb-2" value="">
+                    <input type="text" id="admin-music-name-input" placeholder="트랙 이름 (선택 사항)" class="form-input mb-2" value="">
+                    <button id="set-music-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 p-2">배경 음악 적용 / 업데이트</button>
+                    <button id="stop-music-btn" class="w-full mt-2 bg-red-600 hover:bg-red-700 p-2">배경 음악 중지</button>
+                </div>
+
+                <div class="mt-4 grid grid-cols-2 gap-4">
+                    <button id="reset-board-pos-btn" class="w-full bg-red-700 p-2">보드 초기화 (미배치)</button>
+                    <button id="reset-all-game-btn" class="w-full bg-red-900 p-2">⚠️ 전체 게임 재시작</button>
                 </div>
                 <div class="mt-4">
                     <label for="max-rounds-input" class="block text-sm font-medium text-gray-300">최대 라운드 (0=무한)</label>
@@ -1423,59 +2481,160 @@
                     <label for="admin-move-toggle" class="ml-2 block text-sm text-gray-300 font-medium">관리자 토큰 이동 허용 (턴 무시)</label>
                 </div>
             </div>`;
+            
+            // Map Edit Toggle
+            container.innerHTML += `<div class="mb-8 p-4 border border-gray-700 rounded-md">
+                <h4 class="font-bold text-lg mb-4 text-yellow-400">맵/지형 관리</h4>
+                <button id="open-map-edit-btn" class="w-full bg-purple-600 p-2 font-bold ${gameState !== 'PREPARATION' ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState !== 'PREPARATION' ? 'disabled' : ''}>맵 편집 모드 ${isMapEditMode ? '종료' : '시작'}</button>
+            </div>`;
 
-            // Skill Management
-            let skillHtml = `<div id="admin-skill-list" class="space-y-4">`;
-            Object.keys(SKILLS).sort().forEach(id => {
-                const s = SKILLS[id];
-                skillHtml += `<div class="p-4 rounded-none bg-gray-800 border-l-4 border-gray-600"><h4 class="font-bold text-lg">${s.icon} ${s.name}</h4><div class="grid grid-cols-3 gap-2 mt-2"><input id="admin-name-${id}" class="form-input" value="${s.name}"><input id="admin-range-${id}" type="number" class="form-input" value="${s.range}"><input id="admin-multiplier-${id}" type="number" step="0.1" class="form-input" value="${s.multiplier}"></div><div class="grid grid-cols-2 gap-2 mt-2"><select id="admin-type-${id}" class="form-input bg-gray-700"><option value="Melee" ${s.type === 'Melee' ? 'selected' : ''}>Melee</option><option value="Ranged" ${s.type === 'Ranged' ? 'selected' : ''}>Ranged</option><option value="Heal" ${s.type === 'Heal' ? 'selected' : ''}>Heal</option><option value="Utility" ${s.type === 'Utility' ? 'selected' : ''}>Utility</option></select><input id="admin-icon-${id}" placeholder="아이콘" class="form-input" value="${s.icon || ''}"></div><button data-skill-id="${id}" class="save-skill-btn mt-2 bg-green-600 p-2 w-full">저장</button></div>`; // Added type and icon to admin panel
+
+            // Skill Management (Categorized view)
+            const skillsByCategory = Object.values(SKILLS).reduce((acc, s) => {
+                const category = s.category || 'Other';
+                if (!acc[category]) acc[category] = [];
+                acc[category].push(s);
+                return acc;
+            }, {});
+
+            let skillHtml = `
+            <div id="admin-skill-list" class="space-y-6">
+                <h3 class="text-2xl font-bold font-title" style="color: var(--accent-primary);">스킬 목록/편집</h3>`;
+
+            SKILL_CATEGORIES.forEach(category => {
+                const skills = skillsByCategory[category];
+                if (skills && skills.length > 0) {
+                    const categoryColor = {
+                        'Attack': 'border-red-600',
+                        'Support': 'border-blue-600',
+                        'Heal': 'border-green-600',
+                        'Utility': 'border-gray-500',
+                        'Defense': 'border-yellow-600',
+                        'Other': 'border-purple-600'
+                    }[category];
+
+                    skillHtml += `<div class="mt-4">
+                        <h4 class="font-bold text-xl mb-3 text-white border-b border-gray-700 pb-1">${category} 스킬</h4>
+                        <div class="space-y-3">`;
+                    
+                    skills.sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
+                        // Check if specific costs exist to display them
+                        const costDisplay = [
+                            s.mpCost > 0 ? `${s.mpCost} MP` : '',
+                            s.hpCost > 0 ? `${s.hpCost} HP` : ''
+                        ].filter(Boolean).join(', ');
+
+                        skillHtml += `<div class="p-4 rounded-md bg-gray-800 border-l-4 ${categoryColor}">
+                            <h4 class="font-bold text-lg">${s.icon} ${s.name} <span class="text-sm text-gray-400">(${s.id})</span></h4>
+                            <p class="text-xs text-gray-500 mb-2">비용: ${costDisplay || '없음'} | 범위: ${s.range} | 계수: ${s.multiplier} | 유형: ${s.type}</p>
+                            <div class="grid grid-cols-4 gap-2 mt-2">
+                                <input id="admin-name-${s.id}" class="form-input col-span-2" placeholder="이름" value="${s.name}">
+                                <input id="admin-category-${s.id}" class="form-input" placeholder="분류 (Attack/Support...)" value="${s.category || 'Other'}">
+                                <input id="admin-type-${s.id}" class="form-input" placeholder="타입 (Melee/Heal...)" value="${s.type}">
+                                <input id="admin-icon-${s.id}" placeholder="아이콘" class="form-input" value="${s.icon || ''}">
+                                
+                                <input id="admin-range-${s.id}" type="number" class="form-input" placeholder="사거리" value="${s.range}">
+                                <input id="admin-multiplier-${s.id}" type="number" step="0.1" class="form-input" placeholder="계수" value="${s.multiplier}">
+                                <input id="admin-mpcost-${s.id}" type="number" class="form-input" placeholder="MP 비용" value="${s.mpCost || 0}">
+                                <input id="admin-hpcost-${s.id}" type="number" class="form-input" placeholder="HP 비용" value="${s.hpCost || 0}">
+                            </div>
+                            <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-700/50">
+                                <button data-skill-id="${s.id}" class="save-skill-btn bg-green-600 p-2 text-sm flex-grow mr-2">저장</button>
+                                <button data-skill-id="${s.id}" data-skill-name="${s.name}" class="delete-skill-btn bg-red-700 hover:bg-red-600 p-2 text-sm text-white">삭제</button>
+                            </div>
+                        </div>`;
+                    });
+                    skillHtml += `</div></div>`;
+                }
             });
-             skillHtml += `<div class="mt-8 pt-4 border-t border-gray-700">
+
+            skillHtml += `<div class="mt-8 pt-4 border-t border-gray-700">
                 <h4 class="font-bold text-lg mb-2 text-green-400">새 스킬 추가</h4>
                 <div class="grid grid-cols-2 gap-4">
                     <input id="new-skill-id" placeholder="스킬 ID (e.g., fireball)" class="form-input">
                     <input id="new-skill-name" placeholder="스킬 이름" class="form-input">
-                    <select id="new-skill-type" class="form-input bg-gray-700"><option value="Melee">Melee</option><option value="Ranged">Ranged</option><option value="Heal">Heal</option><option value="Utility">Utility</option></select>
+                    <select id="new-skill-category" class="form-input bg-gray-700">
+                        ${SKILL_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}
+                    </select>
+                    <select id="new-skill-type" class="form-input bg-gray-700">
+                        <option value="Melee">Melee</option><option value="Ranged">Ranged</option><option value="Heal">Heal</option><option value="Utility">Utility</option><option value="Support">Support</option>
+                    </select>
                     <input id="new-skill-icon" placeholder="아이콘 (e.g., 🔥)" class="form-input">
                     <input id="new-skill-range" type="number" placeholder="범위" class="form-input">
                     <input id="new-skill-multiplier" type="number" step="0.1" placeholder="피해/회복 계수" class="form-input">
+                    <input id="new-skill-mpcost" type="number" placeholder="MP 비용" class="form-input" value="0">
                 </div>
                 <button id="add-new-skill-btn" class="mt-4 bg-blue-600 p-2 w-full">새 스킬 저장</button>
             </div></div>`;
             container.innerHTML += skillHtml;
 
-            // Character Management (existing)
+            // Character Management 
             container.innerHTML += `<div class="mt-8 pt-4 border-t border-gray-700">
                 <h4 class="font-bold text-lg mb-2 text-green-400">새 캐릭터/에너미 추가</h4>
                 <div class="grid grid-cols-2 gap-4">
                     <input id="new-char-name" placeholder="이름" class="form-input">
                     <select id="new-char-type" class="form-input bg-gray-700"><option value="PC">PC</option><option value="ENEMY">ENEMY</option></select>
                     <input id="new-char-imageUrl" placeholder="이미지 URL" class="form-input col-span-2">
-                    <input id="new-char-hp" type="number" placeholder="HP" class="form-input" value="100">
-                    <input id="new-char-min-attack" type="number" placeholder="최소 공격력" class="form-input" value="10">
-                    <input id="new-char-max-attack" type="number" placeholder="최대 공격력" class="form-input" value="15">
-                    <input id="new-char-min-defense" type="number" placeholder="최소 방어력" class="form-input" value="3">
-                    <input id="new-char-max-defense" type="number" placeholder="최대 방어력" class="form-input" value="7">
-                    <input id="new-char-size" type="number" placeholder="크기" class="form-input" value="1">
-                    <input id="new-char-skills" placeholder="스킬 ID (e.g. slash,shoot)" class="form-input col-span-2">
+                    
+                    <div class="relative"><input id="new-char-hp" type="number" placeholder=" " class="form-input peer" value="100"><label for="new-char-hp" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-1/2 peer-focus:-top-2 peer-focus:text-xs">HP (체력)</label></div>
+                    <div class="relative"><input id="new-char-mp" type="number" placeholder=" " class="form-input peer" value="50"><label for="new-char-mp" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-1/2 peer-focus:-top-2 peer-focus:text-xs">MP (마나)</label></div>
+                    
+                    <div class="relative"><input id="new-char-min-attack" type="number" placeholder=" " class="form-input peer" value="10"><label for="new-char-min-attack" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-1/2 peer-focus:-top-2 peer-focus:text-xs">최소 공격력</label></div>
+                    <div class="relative"><input id="new-char-max-attack" type="number" placeholder=" " class="form-input peer" value="15"><label for="new-char-max-attack" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-1/2 peer-focus:-top-2 peer-focus:text-xs">최대 공격력</label></div>
+
+                    <div class="relative"><input id="new-char-min-defense" type="number" placeholder=" " class="form-input peer" value="3"><label for="new-char-min-defense" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-1/2 peer-focus:-top-2 peer-focus:text-xs">최소 방어력</label></div>
+                    <div class="relative"><input id="new-char-max-defense" type="number" placeholder=" " class="form-input peer" value="7"><label for="new-char-max-defense" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-1/2 peer-focus:-top-2 peer-focus:text-xs">최대 방어력</label></div>
+
+                    <div class="relative"><input id="new-char-size" type="number" placeholder=" " class="form-input peer" value="1"><label for="new-char-size" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-1/2 peer-focus:-top-2 peer-focus:text-xs">크기 (1x1, 2x2...)</label></div>
+                    <input id="new-char-skills" placeholder="스킬 ID (e.g. slash,shoot)" class="form-input">
                 </div>
                 <button id="add-new-char-btn" class="mt-4 bg-blue-600 p-2 w-full">새 캐릭터 저장</button>
             </div>`;
 
             document.getElementById('close-admin-modal-btn').onclick = () => closeModal('admin-modal');
 
+            // Set Admin Music Inputs with current values
+            const gameDocRef = doc(db, 'games', gameId);
+            getDoc(gameDocRef).then(docSnap => {
+                 if (docSnap.exists()) {
+                     const data = docSnap.data();
+                     document.getElementById('admin-music-url-input').value = data.musicUrl || '';
+                     document.getElementById('admin-music-name-input').value = data.musicName || '';
+                 }
+            });
+
+
+            document.getElementById('set-music-btn').onclick = async () => {
+                const url = document.getElementById('admin-music-url-input').value.trim();
+                const name = document.getElementById('admin-music-name-input').value.trim() || '지정된 트랙';
+                if (url && gameId) {
+                    await updateDoc(doc(db, 'games', gameId), { musicUrl: url, musicName: name });
+                    showCustomModal("음악 적용", `배경 음악을 '${name}'으로 설정했습니다.`, [{text: "확인", class: "bg-green-600"}]);
+                } else {
+                     showCustomModal("오류", "유튜브 URL을 입력해주세요.", [{text: "확인", class: "bg-red-600"}]);
+                }
+            };
+            
+            document.getElementById('stop-music-btn').onclick = async () => {
+                if (gameId) {
+                    await updateDoc(doc(db, 'games', gameId), { musicUrl: '', musicName: '' });
+                    showCustomModal("음악 중지", "배경 음악 재생을 중지했습니다.", [{text: "확인", class: "bg-green-600"}]);
+                }
+            };
+
+
             document.getElementById('set-prep-phase-btn').onclick = async () => {
                 if (gameId) {
                     await updateDoc(doc(db, 'games', gameId), { gameState: 'PREPARATION', currentTurnIndex: 0, currentTurnCharId: null, round: 1 });
                     await logAction("🛠️ 관리자가 게임을 준비 단계로 설정했습니다.", "system");
-                    showCustomModal("상태 변경", "게임이 준비 단계로 설정되었습니다. 자유롭게 토큰을 배치하세요.", [{text:"확인", class:"bg-blue-600"}]);
+                    showCustomModal("상태 변경", "게임이 준비 단계로 설정되었습니다. 자유롭게 토큰을 배치하세요.", [{text: "확인", class: "bg-blue-600"}]);
                 }
             };
             document.getElementById('set-start-phase-btn').onclick = async () => {
                 if (gameId) {
                     await updateDoc(doc(db, 'games', gameId), { gameState: 'STARTED' });
                     await logAction("⚔️ 게임이 시작되었습니다! 첫 번째 턴부터 진행합니다.", "system");
-                    showCustomModal("게임 시작", "전투를 시작합니다!", [{text:"확인", class:"bg-green-600"}]);
+                    showCustomModal("게임 시작", "전투를 시작합니다!", [{text: "확인", class: "bg-green-600"}]);
                 }
             };
             document.getElementById('prev-turn-btn').onclick = async () => { if (gameId) await previousTurn(); };
@@ -1484,11 +2643,20 @@
                 if (gameId) {
                     const newMaxRounds = parseInt(document.getElementById('max-rounds-input').value) || 0;
                     await updateDoc(doc(db, 'games', gameId), { maxRounds: newMaxRounds });
-                    showCustomModal("설정 저장", `최대 라운드가 ${newMaxRounds > 0 ? newMaxRounds : '무한'}으로 설정되었습니다.`, [{text:"확인", class:"bg-indigo-600"}]);
+                    showCustomModal("설정 저장", `최대 라운드가 ${newMaxRounds > 0 ? newMaxRounds : '무한'}으로 설정되었습니다.`, [{text: "확인", class: "bg-indigo-600"}]);
                 }
             };
+            document.getElementById('reset-board-pos-btn').onclick = resetBoardPositions;
+            document.getElementById('reset-all-game-btn').onclick = async () => {
+                showCustomModal("전체 초기화 경고", "모든 캐릭터, 맵 지형, 게임 로그가 완전히 초기화됩니다. 계속하시겠습니까?", [
+                    { text: "취소", class: "bg-gray-600" },
+                    { text: "확인 (초기화)", class: "bg-red-600", onClick: resetAllGameData }
+                ]);
+            };
 
-            // NEW: Admin Move Toggle Listener
+            document.getElementById('open-map-edit-btn').onclick = openMapEditModal;
+
+
             document.getElementById('admin-move-toggle').onchange = async (e) => {
                 const isChecked = e.target.checked;
                 if (gameId) {
@@ -1506,36 +2674,66 @@
                         range: parseFloat(document.getElementById(`admin-range-${id}`).value), 
                         multiplier: parseFloat(document.getElementById(`admin-multiplier-${id}`).value),
                         type: document.getElementById(`admin-type-${id}`).value,
-                        icon: document.getElementById(`admin-icon-${id}`).value
+                        icon: document.getElementById(`admin-icon-${id}`).value,
+                        category: document.getElementById(`admin-category-${id}`).value,
+                        mpCost: parseInt(document.getElementById(`admin-mpcost-${id}`).value) || 0,
+                        hpCost: parseInt(document.getElementById(`admin-hpcost-${id}`).value) || 0,
                     };
                     if (gameId) { await setDoc(doc(db, 'games', gameId), { skills: { ...SKILLS, [id]: updated } }, { merge: true }); }
                 };
             });
             
+            document.querySelectorAll('.delete-skill-btn').forEach(btn => { // NEW: Delete skill listener
+                btn.onclick = (e) => {
+                    const skillId = e.currentTarget.dataset.skillId;
+                    const skillName = e.currentTarget.dataset.skillName;
+                    showCustomModal("스킬 삭제 확인", `**${skillName}** 스킬을 삭제하시겠습니까? 이 스킬을 가진 모든 캐릭터에서 제거됩니다.`, [
+                        { text: "취소", class: "bg-gray-600" },
+                        { text: "삭제", class: "bg-red-600", onClick: () => deleteSkill(skillId, skillName) }
+                    ]);
+                };
+            });
+
             document.getElementById('add-new-skill-btn').onclick = async () => {
                 const newId = document.getElementById('new-skill-id').value.trim();
                 if (!newId || SKILLS[newId]) {
-                    showCustomModal("오류", "유효하지 않거나 중복된 스킬 ID입니다.", [{text:"확인", class:"bg-red-600"}]);
+                    showCustomModal("오류", "유효하지 않거나 중복된 스킬 ID입니다.", [{text: "확인", class: "bg-red-600"}]);
                     return;
                 }
-                const newSkill = { id: newId, name: document.getElementById('new-skill-name').value, type: document.getElementById('new-skill-type').value, icon: document.getElementById('new-skill-icon').value, range: parseFloat(document.getElementById('new-skill-range').value) || 0, multiplier: parseFloat(document.getElementById('new-skill-multiplier').value) || 0, };
+                const newSkill = { 
+                    id: newId, 
+                    name: document.getElementById('new-skill-name').value, 
+                    type: document.getElementById('new-skill-type').value, 
+                    icon: document.getElementById('new-skill-icon').value, 
+                    range: parseFloat(document.getElementById('new-skill-range').value) || 0, 
+                    multiplier: parseFloat(document.getElementById('new-skill-multiplier').value) || 0,
+                    category: document.getElementById('new-skill-category').value,
+                    mpCost: parseInt(document.getElementById('new-skill-mpcost').value) || 0,
+                    hpCost: 0, // Default 0 for simplicity in this panel
+                };
                 if (gameId) {
                     await setDoc(doc(db, 'games', gameId), { skills: { ...SKILLS, [newId]: newSkill } }, { merge: true });
-                    showCustomModal("성공", `'${newSkill.name}' 스킬이 추가되었습니다.`, [{text:"확인", class:"bg-green-600"}]);
+                    showCustomModal("성공", `'${newSkill.name}' 스킬이 추가되었습니다.`, [{text: "확인", class: "bg-green-600"}]);
                 }
             };
 
             document.getElementById('add-new-char-btn').onclick = async () => {
                 const name = document.getElementById('new-char-name').value.trim();
-                if (!name) { showCustomModal("오류", "이름을 입력해야 합니다.", [{text:"확인", class:"bg-red-600"}]); return; }
+                if (!name) { showCustomModal("오류", "이름을 입력해야 합니다.", [{text: "확인", class: "bg-red-600"}]); return; }
                 const type = document.getElementById('new-char-type').value;
                 const skills = document.getElementById('new-char-skills').value.split(',').map(s => s.trim()).filter(Boolean);
                 
-                const newChar = { name: name, type: type, imageUrl: document.getElementById('new-char-imageUrl').value.trim(), hp: parseInt(document.getElementById('new-char-hp').value) || 100, maxHp: parseInt(document.getElementById('new-char-hp').value) || 100, minAttack: parseInt(document.getElementById('new-char-min-attack').value) || 10, maxAttack: parseInt(document.getElementById('new-char-max-attack').value) || 15, minDefense: parseInt(document.getElementById('new-char-min-defense').value) || 3, maxDefense: parseInt(document.getElementById('new-char-max-defense').value) || 7, size: parseInt(document.getElementById('new-char-size').value) || 1, skills: skills, x: null, y: null, turnOrder: characters.length + 1, password: type === 'PC' ? DEFAULT_PC_PASSWORD : '' };
+                const newChar = { name: name, type: type, imageUrl: document.getElementById('new-char-imageUrl').value.trim(), 
+                    hp: parseInt(document.getElementById('new-char-hp').value) || 100, maxHp: parseInt(document.getElementById('new-char-hp').value) || 100, 
+                    mp: parseInt(document.getElementById('new-char-mp').value) || 50, maxMp: parseInt(document.getElementById('new-char-mp').value) || 50, 
+                    minAttack: parseInt(document.getElementById('new-char-min-attack').value) || 10, maxAttack: parseInt(document.getElementById('new-char-max-attack').value) || 15, 
+                    minDefense: parseInt(document.getElementById('new-char-min-defense').value) || 3, maxDefense: parseInt(document.getElementById('new-char-max-defense').value) || 7, 
+                    size: parseInt(document.getElementById('new-char-size').value) || 1, 
+                    skills: skills, x: null, y: null, turnOrder: characters.length + 1, password: type === 'PC' ? DEFAULT_PC_PASSWORD : '' };
                 
                 if (gameId) {
                     await addDoc(collection(db, "games", gameId, "characters"), newChar);
-                    showCustomModal("성공", `'${newChar.name}' 캐릭터가 추가되었습니다.`, [{text:"확인", class:"bg-green-600"}]);
+                    showCustomModal("성공", `'${newChar.name}' 캐릭터가 추가되었습니다.`, [{text: "확인", class: "bg-green-600"}]);
                 }
             };
 
@@ -1544,12 +2742,11 @@
 
         // --- Event Listeners ---
         
-        // --- Centralized Permission Check ---
         function canControlCharacter(charId) {
             const char = characters.find(c => c.id === charId);
             if (!char || char.hp <= 0) return false;
 
-            if (isAdmin && isAdminMoveAllowed) return true; // Admin control is subject to the move toggle
+            if (isAdmin && isAdminMoveAllowed) return true;
 
             if (loggedInCharId !== charId) return false; 
 
@@ -1559,56 +2756,64 @@
             
             return false;
         }
-        
-        // --- Permission Check for Mouse Interaction ---
-        function canInteractWithCharacter(charId) {
-            const char = characters.find(c => c.id === charId);
-            if (!char || char.hp <= 0) return false;
 
-            // Admins can always click/select for profile/setup/admin moves
-            if (isAdmin) return true; 
+        function isCellOccupied(targetX, targetY, movingCharId = null) {
+            // Check for character occupancy
+            const isCharOccupied = characters.some(char => {
+                if (char.id === movingCharId || char.x === null) return false;
+                const size = char.size || 1;
+                return targetX >= char.x && targetX < (char.x + size) && targetY >= char.y && targetY < (char.y + size);
+            });
 
-            // PC users can only interact with their own token or the current turn token if they are logged in as them
-            const currentTurnChar = characters[currentTurnIndex];
-            const isMyChar = loggedInCharId === charId;
-            const isMyTurn = currentTurnChar?.id === charId;
-
-            // Allow selecting their own character for action/move even if it's not their turn, 
-            // but the control logic later will restrict the actions. This ensures a user can at least select their character to see the profile/info.
-            // However, since the request is specifically about controlling movement, we will prioritize direct control:
-            if (isMyChar && (isMyTurn || gameState === 'PREPARATION')) return true;
+            // Check for obstacle tile
+            const tileKey = `${targetX},${targetY}`;
+            const isObstacle = boardTiles[tileKey]?.type === 'obstacle';
             
-            return false;
+            return isCharOccupied || isObstacle;
         }
 
+        function canPlaceCharacter(charToPlace, targetX, targetY) {
+            const size = charToPlace.size || 1;
+            if (targetX < 0 || targetY < 0 || targetX + size > BOARD_SIZE || targetY + size > BOARD_SIZE) return false;
+            for (let i = 0; i < size; i++) {
+                for (let j = 0; j < size; j++) {
+                    if (isCellOccupied(targetX + i, targetY + j, charToPlace.id)) return false;
+                }
+            }
+            return true;
+        }
 
         async function handlePreparationClick(e) {
             const token = e.target.closest('.character-token');
             const cell = e.target.closest('.cell');
             if (!cell) return;
+            const x = parseInt(cell.dataset.x);
+            const y = parseInt(cell.dataset.y);
+
+            // NEW: Map Edit Mode takes precedence in PREPARATION phase if admin
+            if (isAdmin && isMapEditMode) {
+                await saveBoardTile(x, y, currentTileType);
+                return;
+            }
 
             if (token) {
-                // Clicking on a token selects it
                 selectedCharacterId = token.dataset.charId;
                 render();
             } else if (selectedCharacterId) {
                 const targetChar = characters.find(c => c.id === selectedCharacterId);
                 const isPC = targetChar?.type === 'PC';
 
-                // Check authorization for placing/moving unplaced tokens
-                // Admin can move if isAdminMoveAllowed is true
                 if (isAdmin && isAdminMoveAllowed || (isPC && loggedInCharId === selectedCharacterId && gameState === 'PREPARATION')) {
-                    const newX = parseInt(cell.dataset.x);
-                    const newY = parseInt(cell.dataset.y);
-                    
-                    if (targetChar && canPlaceCharacter(targetChar, newX, newY)) {
-                        await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacterId), { x: newX, y: newY });
+                    if (targetChar && canPlaceCharacter(targetChar, x, y)) {
+                        await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacterId), { x: x, y: y });
                         if (targetChar.x === null) {
                            await logAction(`✅ ${targetChar.name}이(가) 전장에 합류했습니다.`, "join");
                         } else if (isAdmin) {
-                           await logAction(`👮 관리자가 ${targetChar.name}을(를) (${targetChar.x},${targetChar.y})에서 (${newX}, ${newY})로 이동했습니다.`, "admin-move");
+                           await logAction(`👮 관리자가 ${targetChar.name}을(를) (${targetChar.x},${targetChar.y})에서 (${x}, ${y})로 이동했습니다.`, "admin-move");
                         }
                         selectedCharacterId = null;
+                    } else {
+                         showCustomModal("배치 오류", "해당 위치는 이미 다른 캐릭터가 차지하고 있거나 장애물입니다.", [{ text: "확인", class: "bg-red-600" }]);
                     }
                 } else {
                     showCustomModal("권한 부족", `${targetChar?.name || '캐릭터'}를 배치하려면 로그인하거나 관리자 권한이 필요합니다.`, [{ text: "확인", class: "bg-red-600" }]);
@@ -1627,7 +2832,6 @@
             const selectedCharacter = characters.find(c => c.id === selectedCharacterId);
             const currentTurnChar = characters[currentTurnIndex];
             
-            // Determine if the user has control over the currently selected token.
             const isControllable = selectedCharacter && canControlCharacter(selectedCharacter.id);
             
             if (token) {
@@ -1639,10 +2843,26 @@
                     return;
                 }
 
-                // If the clicked character is the current turn char AND the user is logged in as that char/admin, auto-select it.
                 if (currentTurnChar?.id === clickedCharId && (isAdmin || loggedInCharId === clickedCharId)) {
                     selectedCharacterId = clickedCharId;
-                    turnPhase = 'MOVE';
+                    // NEW: If already selected and in MOVE phase, treat a click on self as skipping move.
+                    if (selectedCharacterId === clickedCharId && turnPhase === 'MOVE') {
+                        const cellX = parseInt(cell.dataset.x);
+                        const cellY = parseInt(cell.dataset.y);
+                        // Check if the click is on the character's current cell(s)
+                        const isClickOnSelf = cellX >= clickedChar.x && cellX < (clickedChar.x + (clickedChar.size || 1)) &&
+                                              cellY >= clickedChar.y && cellY < (clickedChar.y + (clickedChar.size || 1));
+                        
+                        if (isClickOnSelf) {
+                            turnPhase = 'ACTION'; // Skip move phase
+                            selectedSkill = null;
+                            preMovePosition = { x: clickedChar.x, y: clickedChar.y };
+                            logAction(`⏩ ${clickedChar.name}이(가) 제자리 이동으로 단계를 건너뛰었습니다.`, "system");
+                            render();
+                            return;
+                        }
+                    }
+                    
                     selectedSkill = 'move';
                     preMovePosition = { x: clickedChar.x, y: clickedChar.y };
                     render();
@@ -1657,16 +2877,20 @@
                  return;
             }
 
-            // --- Execution Logic (Only runs if isControllable is true) ---
             if (turnPhase === 'MOVE') {
                 if (token && token.dataset.charId === selectedCharacterId) { 
-                    turnPhase = 'ACTION'; 
-                    selectedSkill = null; 
-                    render(); 
-                    return; 
+                    // Handled above or by marker click
                 } 
                 
                 const newX = parseInt(cell.dataset.x), newY = parseInt(cell.dataset.y);
+                const tileType = boardTiles[`${newX},${newY}`]?.type;
+
+                if (tileType === 'obstacle' && !isAdmin) {
+                    showCustomModal("이동 불가", "이 칸은 장애물입니다. 이동할 수 없습니다.", [{ text: "확인", class: "bg-red-600" }]);
+                    return;
+                }
+
+                // Use 'attack-range-move' class which covers all valid moves (including utility moves)
                 if (canPlaceCharacter(selectedCharacter, newX, newY) && cell.classList.contains('attack-range-move')) {
                     await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacter.id), { x: newX, y: newY });
                     
@@ -1682,28 +2906,57 @@
                 const skill = SKILLS[selectedSkill];
                 if (!skill) return;
 
-                const isAttackSkill = skill.type !== 'Utility' && skill.type !== 'Heal';
-                const isHealSkill = skill.type === 'Heal';
+                const isAttackSkill = skill.category === 'Attack';
+                const isHealOrSupport = skill.category === 'Heal' || skill.category === 'Support';
                 
                 if (isAttackSkill) {
+                    // Check if current user has enough MP to attempt the skill
+                    if (selectedCharacter.mp < skill.mpCost) {
+                        await logAction(`⚠️ ${selectedCharacter.name}이(가) 마나가 부족하여 ${skill.name}을(를) 시전하지 못했습니다.`, "system");
+                        render();
+                        return;
+                    }
+                    
                     if (skill.isAoe) {
                         if (cell.classList.contains('attack-range-skill')) {
                             await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
                         }
                     } else if (token) {
                         const targetChar = characters.find(c => c.id === token.dataset.charId);
+                        // Standard Attack: Target must be enemy (type check) and in range (class check)
                         if (targetChar && selectedCharacter.type !== targetChar.type && cell.classList.contains('attack-range-skill')) {
                             await executeSkill(selectedCharacter, targetChar, selectedSkill);
                         }
                     }
-                } else if (isHealSkill) {
+                } else if (isHealOrSupport) {
+                     // Check if current user has enough MP/HP to attempt the skill
+                    if (selectedCharacter.mp < skill.mpCost || (skill.hpCost && selectedCharacter.hp <= skill.hpCost)) {
+                        await logAction(`⚠️ ${selectedCharacter.name}이(가) 자원(MP/HP)이 부족하여 ${skill.name}을(를) 시전하지 못했습니다.`, "system");
+                        render();
+                        return;
+                    }
+                    
                     if (skill.isAoe) {
                         if (cell.classList.contains('heal-range-skill')) {
                             await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
                         }
                     } else if (token) {
                         const targetChar = characters.find(c => c.id === token.dataset.charId);
-                        if (targetChar && selectedCharacter.type === targetChar.type && cell.classList.contains('heal-range-skill')) {
+                        
+                        let isValidTarget = false;
+                        if (skill.targetType === 'ALLY_DEAD') {
+                            // Resurrect: Target must be dead ally
+                            if (targetChar && selectedCharacter.type === targetChar.type && targetChar.hp <= 0 && cell.classList.contains('heal-range-skill')) {
+                                isValidTarget = true;
+                            }
+                        } else if (skill.targetType === 'ALLY') {
+                            // Heal/Support: Target must be live ally
+                             if (targetChar && selectedCharacter.type === targetChar.type && targetChar.hp > 0 && cell.classList.contains('heal-range-skill')) {
+                                isValidTarget = true;
+                            }
+                        }
+                        
+                        if (isValidTarget) {
                             await executeSkill(selectedCharacter, targetChar, selectedSkill);
                         }
                     }
@@ -1720,28 +2973,61 @@
             }
         }
         
-        function isCellOccupied(targetX, targetY, movingCharId = null) {
-            return characters.some(char => {
-                if (char.id === movingCharId || char.x === null) return false;
-                const size = char.size || 1;
-                return targetX >= char.x && targetX < (char.x + size) && targetY >= char.y && targetY < (char.y + size);
-            });
-        }
-        function canPlaceCharacter(charToPlace, targetX, targetY) {
-            const size = charToPlace.size || 1;
-            if (targetX < 0 || targetY < 0 || targetX + size > BOARD_SIZE || targetY + size > BOARD_SIZE) return false;
-            for (let i = 0; i < size; i++) for (let j = 0; j < size; j++) if (isCellOccupied(targetX + i, targetY + j, charToPlace.id)) return false;
-            return true;
-        }
+        // --- Map Edit Modal Listeners ---
+        document.querySelectorAll('.tile-select-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                currentTileType = e.currentTarget.dataset.tileType;
+                document.getElementById('map-edit-status').textContent = `현재 선택: ${e.currentTarget.textContent.trim()}`;
+            };
+        });
+
+        // "맵 편집 종료" 버튼만 isMapEditMode를 false로 설정합니다.
+        document.getElementById('exit-map-edit-btn').onclick = confirmExitMapEditMode;
+        
+        // 'X' 버튼과 배경 클릭은 팝업만 닫고 isMapEditMode는 유지합니다.
+        document.getElementById('close-map-edit-modal-btn').onclick = hideMapEditModalTemporarily; 
+        mapEditModal.addEventListener('click', e => { 
+            // Close only if the backdrop itself (map-edit-modal) is clicked
+            if (e.target.id === 'map-edit-modal') hideMapEditModalTemporarily(); 
+        });
+        // --- End Map Edit Modal Listeners ---
+
 
         createGameBtn.addEventListener('click', createGame);
         joinGameBtn.addEventListener('click', () => joinGame(gameIdInput.value));
         leaveGameBtn.addEventListener('click', leaveGame);
-        // Adjusted Copy Game ID button logic
+        
+        // User Info Modal Handlers
+        userInfoBtn.addEventListener('click', () => { userInfoModal.classList.remove('hidden'); });
+        // Fix: Use the dedicated button ID to close the User Info Modal
+        document.getElementById('close-user-info-modal-btn').onclick = () => closeModal('user-info-modal');
+        userInfoModal.addEventListener('click', (e) => { 
+            // Only close if backdrop is clicked
+            if (e.target.id === 'user-info-modal') closeModal('user-info-modal'); 
+        });
+        
+        // Copy button inside User Info Modal
+        document.getElementById('user-info-copy-btn').addEventListener('click', () => { 
+            const input = document.getElementById('user-info-game-id-display');
+            input.select(); 
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(input.value).then(() => {
+                    showCustomModal("복사 완료", "게임 코드가 클립보드에 복사되었습니다. (Modern API)", [{ text: "확인", class: "bg-green-600" }]);
+                }).catch(err => {
+                    document.execCommand('copy');
+                    showCustomModal("복사 완료", "게임 코드가 클립보드에 복사되었습니다. (Fallback)", [{ text: "확인", class: "bg-green-600" }]);
+                    console.error('Async clipboard copy failed:', err);
+                });
+            } else {
+                 document.execCommand('copy');
+                 showCustomModal("복사 완료", "게임 코드가 클립보드에 복사되었습니다.", [{ text: "확인", class: "bg-green-600" }]);
+            }
+        });
+
+        // Original Game ID container copy logic (still needed if the original container is shown in the lobby phase)
         copyGameIdBtn.addEventListener('click', () => { 
             const input = document.getElementById('game-id-display');
             input.select(); 
-            // Attempt modern API first, fallback to execCommand
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(input.value).then(() => {
                     showCustomModal("복사 완료", "게임 코드가 클립보드에 복사되었습니다. (Modern API)", [{ text: "확인", class: "bg-green-600" }]);
@@ -1763,15 +3049,20 @@
         });
         profileModal.addEventListener('click', e => { if (e.target.id === 'profile-modal') closeModal('profile-modal'); });
         
-        // PC Login Modal Listeners
         document.getElementById('submit-char-login-btn').addEventListener('click', handlePCLogin);
         document.getElementById('cancel-char-login-btn').addEventListener('click', () => closeModal('pc-login-modal'));
-        document.getElementById('login-btn').addEventListener('click', openPCLoginModal); // NEW: Manual Login Button listener
-        document.getElementById('logout-btn').addEventListener('click', handleLogout);
+        // Re-route original login/logout button handlers
+        // document.getElementById('login-btn').addEventListener('click', openPCLoginModal); // Removed, now handled by User Info Modal
+        // document.getElementById('logout-btn').addEventListener('click', handleLogout); // Removed, now handled by User Info Modal
         pcLoginModal.addEventListener('click', e => { if (e.target.id === 'pc-login-modal') closeModal('pc-login-modal'); });
         
-        // Admin Login Listeners
-        document.getElementById('admin-panel-btn').addEventListener('click', () => { adminPasswordModal.classList.remove('hidden'); document.getElementById('admin-password-input').focus(); });
+        document.getElementById('admin-panel-btn').addEventListener('click', () => { 
+            if (isAdmin) {
+                openAdminModal();
+            } else {
+                adminPasswordModal.classList.remove('hidden'); document.getElementById('admin-password-input').focus();
+            }
+        });
         document.getElementById('cancel-admin-login-btn').addEventListener('click', () => closeModal('admin-password-modal'));
         
         document.getElementById('submit-admin-login-btn').addEventListener('click', async () => {
@@ -1782,8 +3073,8 @@
                 const correctPassword = gameDoc.data().adminPassword || "0000";
                 if (input.value === correctPassword) {
                     closeModal('admin-password-modal');
-                    isAdmin = true; // Set admin flag
-                    loggedInCharId = null; // Clear PC login if authenticated as admin
+                    isAdmin = true;
+                    loggedInCharId = null;
                     openAdminModal();
                     input.value = '';
                     errorP.textContent = '';
@@ -1805,8 +3096,6 @@
                 const targetChar = characters.find(c => c.id === charId);
                 const isPC = targetChar?.type === 'PC';
 
-                // Check authorization for drag-and-drop
-                // Only allow drag if: Admin (AND move is allowed) OR PC (logged in)
                 const canDragAndDrop = (isAdmin && isAdminMoveAllowed) || (isPC && loggedInCharId === charId);
 
                 if (targetChar && canDragAndDrop && (gameState === 'PREPARATION' || targetChar.x === null || isAdminMoveAllowed)) {
@@ -1820,20 +3109,21 @@
                            await logAction(`✅ ${targetChar.name}이(가) 전장에 합류했습니다.`, "join");
                         } else if (isAdmin) {
                            await logAction(`👮 관리자가 ${targetChar.name}을(를) (${targetChar.x},${targetChar.y})에서 (${newX}, ${newY})로 이동했습니다.`, "admin-move");
-                        } else if (gameState === 'PREPARATION') {
-                            // PC just placed their character from the bar during preparation. No move log needed yet.
                         }
                     } else {
-                         showCustomModal("배치 오류", "해당 위치는 이미 다른 캐릭터가 차지하고 있습니다.", [{ text: "확인", class: "bg-red-600" }]);
+                         showCustomModal("배치 오류", "해당 위치는 이미 다른 캐릭터가 차지하고 있거나 장애물입니다.", [{ text: "확인", class: "bg-red-600" }]);
                     }
                 } else if (targetChar && targetChar.x !== null && gameState === 'STARTED') {
-                    // Prevent non-admin users from dragging placed tokens during combat
                     showCustomModal("권한 부족", "전투 중에는 관리자만 토큰을 자유롭게 이동할 수 있습니다. (관리자 이동 권한이 해제되었을 수도 있습니다)", [{ text: "확인", class: "bg-red-600" }]);
                 }
             }
         });
 
-        const applyTheme = (theme) => document.documentElement.classList.toggle('light', theme === 'light');
+        const applyTheme = (theme) => {
+            document.documentElement.classList.toggle('light', theme === 'light');
+            // Re-render to ensure scrollbars update correctly on theme change (due to CSS variable change)
+            render(); 
+        }
         document.getElementById('theme-toggle-btn').addEventListener('click', () => {
             const newTheme = document.documentElement.classList.contains('light') ? 'dark' : 'light';
             localStorage.setItem('theme', newTheme);
