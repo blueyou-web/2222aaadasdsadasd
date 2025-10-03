@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인터랙티브 게임 보드 (Firebase 연동)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #1c1c1b;
+            --bg-secondary: #1c1c1b;
+            --bg-tertiary: #374151;
+            --bg-board: rgba(36, 36, 36, 0.5);
+            --border-primary: #D4B783;
+            --border-secondary: #4b5563;
+            --text-primary: #EAEAEA;
+            --text-secondary: #B0B0C0;
+            --text-tertiary: #888899;
+            --accent-primary: #D4B783;
+            --accent-secondary: #C1A26C;
+            --modal-backdrop: rgba(0, 0, 0, 0.8);
+            --log-move: #60A5FA;
+            --log-damage: #F87171;
+            --log-system: #FBBF24;
+            --log-join: #4ADE80;
+        }
+
+        html.light {
+            --bg-primary: #FDFBF6;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #E5E7EB;
+            --bg-board: rgba(229, 231, 235, 0.8);
+            --border-primary: #8C6A48;
+            --border-secondary: #D1D5DB;
+            --text-primary: #3A3226;
+            --text-secondary: #574B3A;
+            --text-tertiary: #6B7280;
+            --accent-primary: #8C6A48;
+            --accent-secondary: #A98A66;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
+        }
+        
+        body, h1, h2, h3, h4, button, .font-title {
+            font-family: 'Cinzel', 'Noto Sans KR', serif;
+            letter-spacing: 0.5px;
+        }
+        
+        body {
+            padding-top: 250px; 
+        }
+        
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(10, minmax(0, 1fr));
+            grid-template-rows: repeat(10, minmax(0, 1fr));
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            max-width: 90vw;
+            max-height: 90vh;
+            background-color: var(--bg-board);
+            border: 1px solid var(--border-secondary);
+        }
+        .cell {
+            border: 1px solid var(--border-secondary);
+            position: relative;
+            transition: background-color 0.2s;
+        }
+
+        .cell:hover {
+            background-color: rgba(212, 183, 131, 0.1);
+        }
+        
+        .combat-range {
+            outline: 2px solid transparent;
+            outline-offset: -2px;
+            transition: outline 0.2s, background-color 0.2s, box-shadow 0.2s;
+            box-shadow: inset 0 0 12px;
+        }
+
+        .attack-range-move {
+            background-color: rgba(212, 183, 131, 0.05);
+            outline-color: var(--accent-primary);
+            box-shadow: inset 0 0 12px var(--accent-primary);
+        }
+
+        .attack-range-skill {
+            background-color: rgba(239, 68, 68, 0.05);
+            outline-color: var(--log-damage);
+            box-shadow: inset 0 0 12px var(--log-damage);
+        }
+        
+        .enemy-threat-range {
+            background-color: rgba(200, 50, 50, 0.07);
+        }
+
+        .character-token {
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s, filter 0.3s;
+            position: absolute; 
+            z-index: 20;
+            top: 0;
+            left: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid transparent;
+        }
+        
+        .character-token.enemy-token {
+            border-color: #ef4444;
+        }
+
+        .character-token.show-hit-overlay::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: rgba(255, 0, 0, 0.4);
+            box-shadow: inset 0 0 10px rgba(255, 0, 0, 0.6);
+            pointer-events: none;
+        }
+
+        @keyframes hit-effect {
+            0%, 100% { transform: translate(0, 0) rotate(0); }
+            20% { transform: translate(-3px, 0) rotate(-2deg); }
+            40% { transform: translate(3px, 0) rotate(2deg); }
+            60% { transform: translate(-3px, 0) rotate(-2deg); }
+            80% { transform: translate(3px, 0) rotate(2deg); }
+            50% { filter: brightness(1.7) drop-shadow(0 0 5px #ef4444); }
+        }
+
+        .hit-animation {
+            animation: hit-effect 0.5s ease-in-out;
+        }
+
+        html:not(.light) .character-token:not(.enemy-token) {
+            box-shadow: 0 0 8px rgba(212, 183, 131, 0.4), 0 0 10px rgba(0,0,0,0.5);
+        }
+        .token-placeholder {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--accent-primary);
+        }
+        .character-token:hover {
+            transform: scale(1.1);
+        }
+        .selected-character {
+             box-shadow: 0 0 15px 3px var(--accent-primary);
+             border-color: var(--accent-primary) !important;
+        }
+        
+        .form-input {
+             background-color: var(--bg-tertiary);
+             border: 1px solid var(--border-secondary);
+             color: var(--text-primary);
+             border-radius: 4px;
+             padding: 0.5rem 0.75rem;
+             width: 100%;
+             transition: all 0.2s;
+        }
+        .form-input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 5px rgba(212, 183, 131, 0.5);
+            outline: none;
+            background-color: #4a5568;
+        }
+
+        .panel {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-secondary);
+            position: relative;
+            box-shadow: 0 0 15px rgba(0,0,0, 0.2);
+            border-image: linear-gradient(to bottom right, var(--accent-secondary), transparent) 1;
+        }
+        
+        .modal-content {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-secondary);
+            box-shadow: 0 0 25px rgba(212, 183, 131, 0.2);
+        }
+        .modal-backdrop {
+            background-color: var(--modal-backdrop);
+            backdrop-filter: blur(2px);
+        }
+
+        #character-selection-overlay {
+            height: 250px; 
+            background: linear-gradient(180deg, var(--bg-primary) 0%, rgba(36, 36, 36, 0.7) 100%);
+            backdrop-filter: blur(4px);
+            z-index: 40;
+            border-bottom: 1px solid var(--border-secondary);
+            transition: height 0.3s ease-in-out, background-color 0.3s;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+        }
+        
+        #character-selection-overlay.collapsed { height: 1rem; }
+        #selection-list { overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+        #selection-list::-webkit-scrollbar { display: none; }
+        #selection-list { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .char-card-item {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 150px; 
+            height: 200px; 
+            min-width: 150px; 
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            background-size: cover;
+            background-position: center top; 
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s;
+            border: 1px solid var(--border-secondary);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+        }
+        .card-placeholder { font-size: 4rem; color: var(--accent-primary); opacity: 0.5; }
+        .char-card-item:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(212, 183, 131, 0.2); border-color: var(--accent-primary); }
+        .char-card-item.selected { border-color: var(--accent-primary); transform: scale(1.05); box-shadow: 0 0 25px var(--accent-primary); }
+        .char-card-item:not([draggable="true"]) { cursor: default; }
+        .char-card-item[draggable="true"] { cursor: grab; }
+
+        .char-card-item.enemy-card { border-color: #7f1d1d; }
+        .char-card-item.enemy-card:hover { border-color: #ef4444; box-shadow: 0 10px 20px rgba(239, 68, 68, 0.2); }
+        .char-card-item.enemy-card.selected { border-color: #ef4444; box-shadow: 0 0 25px #ef4444; }
+        .char-card-item.enemy-card .char-card-info { background: linear-gradient(0deg, rgba(40,10,10,0.95) 0%, rgba(0,0,0,0.0) 60%); }
+        .enemy-card .details-btn { border-color: #991b1b; color: #f87171; }
+        .enemy-card .details-btn:hover { border-color: #ef4444; color: #ef4444; }
+
+
+        .char-card-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px; 
+            height: 100%; 
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            background: linear-gradient(0deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.0) 60%);
+            color: var(--text-primary);
+        }
+
+        .turn-highlight {
+            border: 1px solid #fBBF24;
+            background-color: rgba(251, 191, 36, 0.05);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
+        }
+        
+        button { letter-spacing: 1px; border-radius: 2px; transition: all 0.2s ease; border: 1px solid var(--border-secondary); }
+        button:hover { border-color: var(--accent-primary); color: var(--accent-primary); background-color: rgba(212, 183, 131, 0.1) !important; box-shadow: 0 0 10px rgba(212, 183, 131, 0.3); }
+        button.bg-green-600 { background-color: var(--accent-primary) !important; color: var(--bg-primary) !important; font-weight: bold; border: none; }
+        button.bg-red-600 { background-color: var(--log-damage) !important; color: var(--text-primary) !important; font-weight: bold; border: none; }
+        
+        #admin-panel-btn { background-color: var(--accent-primary); color: var(--bg-primary) !important; }
+
+        .details-btn { background: transparent; border: 1px solid var(--accent-secondary); color: var(--accent-secondary); padding: 2px 8px; font-size: 0.75rem; border-radius: 2px; }
+
+        #game-log-list li { background-color: transparent; padding: 4px 0; border: none; position: relative; padding-left: 1.75rem; line-height: 1.5; font-size: 0.8rem; font-family: 'Noto Sans KR', sans-serif; }
+        #game-log-list li::before { content: '•'; position: absolute; left: 0.5rem; top: 4px; font-weight: bold; color: var(--accent-primary); }
+        #game-log-list .log-move::before { color: var(--log-move); }
+        #game-log-list .log-damage::before { color: var(--log-damage); }
+        #game-log-list .log-system::before { color: var(--log-system); }
+        #game-log-list .log-join::before { color: var(--log-join); }
+
+        .profile-modal-container { 
+            background: url('https://www.transparenttextures.com/patterns/dark-matter.png'), linear-gradient(to bottom right, #1a1a1a, #111111); 
+            color: var(--text-primary); 
+            border: 1px solid var(--accent-primary); 
+            box-shadow: 0 0 30px rgba(212, 183, 131, 0.3); 
+            display: grid; 
+            grid-template-columns: 350px 1fr;
+            width: 100%; 
+            max-width: 900px; 
+            height: 600px; 
+            overflow: hidden; 
+            position: relative; 
+        }
+        .profile-modal-container.enemy-profile { border-color: #ef4444; box-shadow: 0 0 30px rgba(239, 68, 68, 0.3); }
+        .profile-modal-container.enemy-profile .profile-char-name, 
+        .profile-modal-container.enemy-profile .stat-item svg, 
+        .profile-modal-container.enemy-profile h3 { color: #f87171; }
+        .profile-modal-container.enemy-profile #edit-char-btn { background-color: #991b1b; }
+        .profile-modal-container.enemy-profile #edit-char-btn:hover { background-color: #ef4444 !important; }
+
+        .profile-char-image { 
+            width: 100%; 
+            height: 100%; 
+            background-size: cover; 
+            background-position: center 20%; 
+        }
+        .profile-stats-panel { 
+            padding: 2.5rem;
+            background-color: rgba(0,0,0,0.1); 
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+        .profile-char-name { font-size: 2.5rem; font-weight: bold; color: var(--accent-primary); margin-bottom: 0.5rem; }
+        .profile-char-type { font-size: 1rem; color: var(--text-secondary); margin-bottom: 2rem; flex-shrink: 0; }
+        .profile-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; flex-shrink: 0; }
+        .stat-item { display: flex; align-items: center; gap: 0.75rem; }
+        .stat-item svg { width: 24px; height: 24px; color: var(--accent-secondary); }
+        .stat-item .value { font-size: 1.25rem; font-weight: bold; }
+        .stat-item .label { font-size: 0.8rem; color: var(--text-tertiary); }
+        
+        .profile-content-scroll {
+            overflow-y: auto;
+            flex-grow: 1;
+            padding-right: 1rem;
+            margin-right: -1rem;
+        }
+        .profile-content-scroll::-webkit-scrollbar { width: 8px; }
+        .profile-content-scroll::-webkit-scrollbar-track { background: transparent; }
+        .profile-content-scroll::-webkit-scrollbar-thumb { background: var(--border-secondary); border-radius: 4px; }
+        .profile-content-scroll::-webkit-scrollbar-thumb:hover { background: var(--accent-secondary); }
+
+        #profile-modal #close-modal-btn { position: absolute; top: 1rem; right: 1rem; z-index: 10; background: none; border: none; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4 overflow-x-hidden pt-60">
+
+    <!-- Game Lobby Modal -->
+    <div id="game-lobby-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[100]">
+        <div class="modal-content rounded-md shadow-2xl p-8 w-full max-w-md">
+            <h2 class="text-3xl font-bold mb-6 text-center" style="color: var(--accent-primary);">게임 참가</h2>
+            <p class="text-center mb-6" style="color: var(--text-secondary);">새 게임을 만들거나, 친구에게 받은 코드를 입력하여 참가하세요.</p>
+            <div class="space-y-4">
+                <button id="create-game-btn" class="w-full bg-green-600 text-black font-bold py-3 px-4 transition-transform hover:scale-105">새 게임 만들기</button>
+                <div class="flex items-center"><hr class="flex-grow border-gray-600"><span class="px-4 text-gray-400">또는</span><hr class="flex-grow border-gray-600"></div>
+                <div class="flex gap-2">
+                    <input type="text" id="game-id-input" placeholder="게임 코드 입력" class="form-input flex-grow">
+                    <button id="join-game-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4">참가하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Character Selection Overlay -->
+    <div id="character-selection-overlay" class="flex flex-col justify-start fixed top-0 left-0 w-full z-40">
+        <div id="selection-list-wrapper" class="overflow-hidden h-full flex items-center transition-opacity duration-300 ease-in-out">
+            <div id="selection-list" class="flex mx-auto p-4 gap-4 max-w-7xl w-full overflow-x-auto whitespace-nowrap justify-center">
+                 <div class="text-white/70 text-lg w-full text-center p-4">인증 중...</div>
+            </div>
+        </div>
+        <button id="overlay-toggle" class="absolute top-full left-1/2 transform -translate-x-1/2 bg-gray-700/90 hover:bg-gray-600/90 text-white p-2 rounded-b-lg z-50 transition-colors shadow-lg">
+             <svg id="toggle-icon" class="w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
+        </button>
+    </div>
+    
+    <!-- Main Content Area -->
+    <div class="w-full max-w-7xl mx-auto flex flex-col lg:flex-row gap-8">
+        <!-- Left: Control Panel -->
+        <div class="panel lg:w-1/4 w-full p-6 shadow-lg flex flex-col">
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <h1 class="text-xl font-bold font-title" style="color: var(--accent-primary);">게임 상태</h1>
+                    <button id="theme-toggle-btn" class="p-2 rounded-full theme-button-hover transition-colors">
+                        <svg id="theme-icon-sun" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                        <svg id="theme-icon-moon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                    </button>
+                </div>
+                 <div id="game-id-container" class="mb-4 hidden">
+                    <p class="text-xs font-semibold" style="color: var(--text-secondary);">게임 코드:</p>
+                    <div class="flex items-center gap-2 mt-1">
+                        <input readonly id="game-id-display" class="form-input bg-gray-800 text-center text-sm p-1">
+                        <button id="copy-game-id-btn" class="p-2 bg-gray-600 hover:bg-gray-500">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="turn-status" class="mb-4 p-3 border border-border-secondary" >
+                    <p class="text-sm font-semibold" style="color: var(--text-secondary);">현재 턴:</p>
+                    <div id="current-turn-char" class="text-xl font-bold font-title" style="color: var(--accent-secondary);">준비 중...</div>
+                </div>
+                <div id="skill-controls" class="mt-4 pb-4 border-b border-border-secondary">
+                     <p class="text-sm" style="color: var(--text-tertiary);">캐릭터를 선택하면 스킬이 표시됩니다.</p>
+                </div>
+                <div id="character-list" class="mt-4 flex-grow">
+                    <h2 class="text-lg font-bold pb-2 mb-2 font-title" style="color: var(--text-secondary); border-bottom: 1px solid var(--border-secondary);">캐릭터 상태</h2>
+                    <div id="char-list-content" class="max-h-96 overflow-y-auto space-y-2">
+                        <p style="color: var(--text-tertiary);" class="text-sm">게임에 참여해주세요...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-auto pt-4">
+                <button id="leave-game-btn" class="w-full bg-red-600 font-bold py-2 px-4">게임 나가기</button>
+            </div>
+        </div>
+
+        <!-- Center: Game Board -->
+        <div class="lg:w-2/4 w-full flex items-center justify-center">
+            <div id="game-board" class="shadow-inner"></div>
+        </div>
+
+        <!-- Right: Game Log -->
+        <div id="log-panel" class="panel lg:w-1/4 w-full p-6 shadow-lg">
+             <h2 class="text-lg font-bold pb-2 mb-4 font-title" style="color: var(--text-secondary); border-bottom: 1px solid var(--border-secondary);">게임 로그</h2>
+             <ul id="game-log-list" class="h-[75vh] overflow-y-auto space-y-2 text-sm pr-2">
+                <li class="log-system">게임 로그를 기다리는 중...</li>
+             </ul>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="profile-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50 hidden"><div id="modal-content" class="w-full"></div></div>
+    <div id="custom-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50 hidden"><div id="custom-modal-content" class="modal-content rounded-md shadow-2xl p-8 w-full max-w-sm"><h3 id="custom-modal-title" class="text-xl font-bold mb-4 font-title"></h3><p id="custom-modal-message" class="mb-6"></p><div id="custom-modal-buttons" class="flex justify-end gap-4"></div></div></div>
+    <button id="admin-panel-btn" class="fixed bottom-8 right-8 text-white font-bold p-3 rounded-full shadow-lg z-50 transition-transform hover:scale-110"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg></button>
+    <div id="admin-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[60] hidden"><div id="admin-modal-content" class="modal-content rounded-md shadow-2xl p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto"><div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold font-title" style="color: var(--accent-primary);">관리자 패널</h3><button id="close-admin-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button></div><div id="admin-skill-list" class="space-y-4"></div></div></div>
+    <div id="admin-password-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[70] hidden">
+        <div class="modal-content rounded-md shadow-2xl p-8 w-full max-w-sm">
+            <h3 class="text-xl font-bold mb-4 font-title">관리자 인증</h3>
+            <p class="mb-4 text-gray-400">관리자 비밀번호를 입력하세요.</p>
+            <input type="password" id="admin-password-input" class="form-input text-center">
+            <p id="admin-password-error" class="text-red-500 text-sm mt-2 h-4"></p>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-admin-login-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4">취소</button>
+                <button id="submit-admin-login-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, updateDoc, query, getDocs, writeBatch, getDoc, setDoc, addDoc, serverTimestamp, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDwTxRX9oUSYVKlhX2k2s7147vQ4MGHj2g",
+            authDomain: "battlemap-5525d.firebaseapp.com",
+            projectId: "battlemap-5525d",
+            storageBucket: "battlemap-5525d.appspot.com",
+            messagingSenderId: "907555037353",
+            appId: "1:907555037353:web:04034cc19b0f9fe64f49b8"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- Global Variables ---
+        const BOARD_SIZE = 10;
+        let characters = [];
+        let selectedCharacterId = null;
+        let userId = null;
+        let gameId = null; 
+        let unsubscribeChars = null;
+        let unsubscribeSettings = null;
+        let unsubscribeLogs = null;
+        let isBoardInitialized = false; 
+        let selectedSkill = null; 
+        let currentTurnIndex = 0;
+        let turnPhase = 'MOVE';
+        let isProcessingTurn = false;
+        let preMovePosition = null; 
+        let gameState = 'PREPARATION';
+        let round = 1;
+        let maxRounds = 0;
+        
+        const DEFAULT_SKILLS = {
+            'move': { id: 'move', name: '이동', type: 'Utility', range: 1, rangeShape: 'diamond', multiplier: 0, icon: '🏃' },
+            'slash': { id: 'slash', name: '베기', type: 'Melee', range: 1, rangeShape: 'diamond', multiplier: 1.5, icon: '⚔️' },
+            'stomp': { id: 'stomp', name: '발 구르기', type: 'Melee', range: 1, rangeShape: 'square', multiplier: 1.2, icon: '💥'},
+            'crosscut': { id: 'crosscut', name: '십자 베기', type: 'Melee', range: 2, rangeShape: 'cross', multiplier: 1.0, icon: '十字'},
+            'shoot': { id: 'shoot', name: '사격', type: 'Ranged', range: 4, rangeShape: 'diamond', multiplier: 1.0, icon: '🏹' },
+            'fireball': { id: 'fireball', name: '화염구', type: 'Ranged', range: 3, rangeShape: 'square', multiplier: 1.0, icon: '🔥', isAoe: true, aoeRange: 1, aoeShape: 'square' },
+        };
+        let SKILLS = {};
+
+        // --- UI Elements ---
+        const gameBoard = document.getElementById('game-board');
+        const profileModal = document.getElementById('profile-modal');
+        const skillControls = document.getElementById('skill-controls');
+        const turnStatus = document.getElementById('current-turn-char');
+        const lobbyModal = document.getElementById('game-lobby-modal');
+        const createGameBtn = document.getElementById('create-game-btn');
+        const joinGameBtn = document.getElementById('join-game-btn');
+        const gameIdInput = document.getElementById('game-id-input');
+        const gameIdContainer = document.getElementById('game-id-container');
+        const gameIdDisplay = document.getElementById('game-id-display');
+        const copyGameIdBtn = document.getElementById('copy-game-id-btn');
+        const adminModal = document.getElementById('admin-modal');
+        const adminPasswordModal = document.getElementById('admin-password-modal');
+        const leaveGameBtn = document.getElementById('leave-game-btn');
+
+        // --- Game Lobby ---
+        function generateGameId() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
+        async function createGame() { await joinGame(generateGameId(), true); }
+        async function joinGame(id, isNewGame = false) {
+            if (!id || id.trim().length === 0) { showCustomModal("오류", "유효한 게임 코드를 입력해주세요.", [{ text: "확인", class: "bg-red-600" }]); return; }
+            gameId = id.trim().toUpperCase();
+
+            if (!isNewGame) {
+                const docSnap = await getDoc(doc(db, "games", gameId));
+                if (!docSnap.exists()) { showCustomModal("참가 실패", "존재하지 않는 게임 코드입니다.", [{ text: "확인", class: "bg-red-600" }]); gameId = null; return; }
+            }
+
+            localStorage.setItem('currentGameId', gameId);
+            lobbyModal.classList.add('hidden');
+            gameIdDisplay.value = gameId;
+            gameIdContainer.classList.remove('hidden');
+
+            if (isNewGame) {
+                await seedInitialSettings(gameId);
+                await seedInitialCharacters(gameId);
+                await logAction("⚔️ 새로운 게임이 시작되었습니다!", "system");
+            }
+            listenForGameData(gameId);
+        }
+        function leaveGame() { localStorage.removeItem('currentGameId'); location.reload(); }
+
+        // --- Authentication ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+                const savedGameId = localStorage.getItem('currentGameId');
+                if (savedGameId) { joinGame(savedGameId); } 
+                else { lobbyModal.classList.remove('hidden'); }
+            } else { signInAnonymously(auth).catch((error) => console.error("Anonymous sign-in failed:", error)); }
+        });
+        
+        // --- Data Seeding ---
+        async function seedInitialSettings(gameId) { await setDoc(doc(db, 'games', gameId), { skills: DEFAULT_SKILLS, currentTurnIndex: 0, currentTurnCharId: null, adminPassword: "0000", gameState: 'PREPARATION', round: 1, maxRounds: 0 }); }
+        async function seedInitialCharacters(gameId) {
+            const charCollectionRef = collection(db, "games", gameId, "characters");
+            const snapshot = await getDocs(charCollectionRef);
+            if (snapshot.empty) {
+                const batch = writeBatch(db);
+                const pcData = [ 
+                    { name: "Shadow Assassin", img: "https://cdn.pixabay.com/photo/2023/12/15/21/47/cat-8451431_1280.jpg", type: 'PC', size: 1, skills: ['slash', 'shoot', 'fireball'], order: 1 }, 
+                    { name: "Steel Guardian", img: "https://cdn.pixabay.com/photo/2023/12/15/21/47/cat-8451431_1280.jpg", type: 'PC', size: 1, skills: ['crosscut'], order: 3 }, 
+                ];
+                const enemyData = [ 
+                    { name: "Dark Knight", img: "https://cdn.pixabay.com/photo/2015/05/22/05/52/cat-778315_1280.jpg", type: 'ENEMY', size: 1, skills: ['slash'], order: 2 }, 
+                    { name: "Abyssal Golem", img: "https://cdn.pixabay.com/photo/2015/05/22/05/52/cat-778315_1280.jpg", type: 'ENEMY', size: 2, skills: ['stomp'], order: 4 }, 
+                ];
+                [...pcData, ...enemyData].forEach(char => {
+                    const newChar = { name: char.name, imageUrl: char.img || '', type: char.type, size: char.size, hp: 100, maxHp: 100, minAttack: 12, maxAttack: 18, minDefense: 3, maxDefense: 7, x: null, y: null, skills: char.skills || [], turnOrder: char.order };
+                    batch.set(doc(charCollectionRef), newChar);
+                });
+                await batch.commit();
+            }
+        }
+        
+        // --- Data Listeners ---
+        function listenForGameData(gameId) {
+            if (unsubscribeSettings) unsubscribeSettings();
+            if (unsubscribeChars) unsubscribeChars();
+            if (unsubscribeLogs) unsubscribeLogs();
+
+            unsubscribeSettings = onSnapshot(doc(db, 'games', gameId), (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    SKILLS = data.skills || {};
+                    gameState = data.gameState || 'PREPARATION';
+                    round = data.round || 1;
+                    maxRounds = data.maxRounds || 0;
+                    const turnCharId = data.currentTurnCharId;
+                    currentTurnIndex = characters.findIndex(c => c.id === turnCharId);
+                    if (currentTurnIndex === -1) currentTurnIndex = 0;
+                    if (!adminModal.classList.contains('hidden')) openAdminModal();
+                    render();
+                }
+            });
+
+            unsubscribeChars = onSnapshot(query(collection(db, "games", gameId, "characters")), (snapshot) => {
+                characters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.turnOrder - b.turnOrder);
+                render();
+            });
+
+            unsubscribeLogs = onSnapshot(query(collection(db, "games", gameId, "logs"), orderBy("timestamp", "desc")), (snapshot) => {
+                renderLogs(snapshot.docs.map(doc => doc.data()));
+            });
+        }
+        
+        // --- Game Logic ---
+        async function logAction(message, type = "system") { if (gameId) await addDoc(collection(db, "games", gameId, "logs"), { message, type, timestamp: serverTimestamp() }); }
+        
+        async function updateTurnIndex(newIndex, reverse = false) {
+            if (characters.length === 0 || !gameId) return;
+            
+            let newRound = round;
+            if (!reverse && newIndex < currentTurnIndex) {
+                newRound++;
+                await logAction(`▶️ 라운드 ${newRound} 시작`, "system");
+            } else if (reverse && newIndex > currentTurnIndex) {
+                if (newRound > 1) {
+                    newRound--;
+                    await logAction(`◀️ 이전 라운드로 돌아갑니다. (라운드 ${newRound})`, "system");
+                }
+            }
+            
+            currentTurnIndex = newIndex % characters.length;
+            const currentTurnCharId = characters[currentTurnIndex]?.id || null;
+
+            if (maxRounds > 0 && newRound > maxRounds) {
+                await setDoc(doc(db, 'games', gameId), { gameState: 'ENDED', round: newRound, currentTurnIndex, currentTurnCharId }, { merge: true });
+                showCustomModal("전투 종료", `최대 라운드(${maxRounds})에 도달하여 전투가 종료되었습니다.`, [{text: "확인", class:"bg-green-600"}]);
+                await logAction(`- 전투 종료: 최대 라운드 도달 -`, "system");
+            } else {
+                await setDoc(doc(db, 'games', gameId), { round: newRound, currentTurnIndex, currentTurnCharId }, { merge: true });
+            }
+        }
+
+        async function nextTurn() {
+            if (characters.length === 0 || !gameId) return;
+            turnPhase = 'MOVE';
+            selectedSkill = 'move';
+            let nextIndex = currentTurnIndex;
+            do {
+                nextIndex = (nextIndex + 1) % characters.length;
+            } while (characters.length > 1 && characters[nextIndex] && (characters[nextIndex].hp <= 0 || characters[nextIndex].x === null));
+            
+            await updateTurnIndex(nextIndex);
+            selectedCharacterId = null;
+        }
+        
+        async function previousTurn() {
+            if (characters.length === 0 || !gameId) return;
+            turnPhase = 'MOVE';
+            selectedSkill = 'move';
+            let prevIndex = currentTurnIndex;
+            do {
+                prevIndex = (prevIndex - 1 + characters.length) % characters.length;
+            } while (characters.length > 1 && characters[prevIndex] && (characters[prevIndex].hp <= 0 || characters[prevIndex].x === null));
+
+            await updateTurnIndex(prevIndex, true);
+            selectedCharacterId = null;
+        }
+
+
+        function findTargetsInAoe(centerX, centerY, range, shape, attackerType) {
+            const affectedCells = new Set();
+            for (let dy = -range; dy <= range; dy++) {
+                for (let dx = -range; dx <= range; dx++) {
+                    let inShape = (shape === 'diamond' && Math.abs(dx) + Math.abs(dy) <= range) || (shape === 'square');
+                    if (inShape) {
+                        const x = centerX + dx;
+                        const y = centerY + dy;
+                        if (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE) affectedCells.add(`${x},${y}`);
+                    }
+                }
+            }
+            
+            const targets = new Set();
+            characters.forEach(char => {
+                if (char.x !== null && char.hp > 0 && char.type !== attackerType) {
+                    const size = char.size || 1;
+                    for (let ex = 0; ex < size; ex++) {
+                        for (let ey = 0; ey < size; ey++) {
+                            if (affectedCells.has(`${char.x + ex},${char.y + ey}`)) {
+                                targets.add(char);
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+            return Array.from(targets);
+        }
+
+        async function applyDamage(attacker, defender, skillId) {
+            const skill = SKILLS[skillId];
+            if (!skill) return;
+
+            const defenderToken = document.querySelector(`.character-token[data-char-id="${defender.id}"]`);
+            if (defenderToken) {
+                defenderToken.classList.add('hit-animation', 'show-hit-overlay');
+                setTimeout(() => {
+                    defenderToken.classList.remove('hit-animation');
+                    defenderToken.classList.remove('show-hit-overlay');
+                }, 1000);
+            }
+
+            const currentAttack = Math.floor(Math.random() * (attacker.maxAttack - attacker.minAttack + 1)) + attacker.minAttack;
+            const currentDefense = Math.floor(Math.random() * (defender.maxDefense - defender.minDefense + 1)) + defender.minDefense;
+            const finalDamage = Math.max(1, Math.round((currentAttack * skill.multiplier) - currentDefense));
+
+            const newHp = Math.max(0, defender.hp - finalDamage);
+            
+            await new Promise(r => setTimeout(r, 150));
+            await updateDoc(doc(db, 'games', gameId, 'characters', defender.id), { hp: newHp });
+
+            let message = `💥 ${attacker.name}의 ${skill.name}! ${defender.name}에게 ${finalDamage.toFixed(0)} 피해!`;
+            if (newHp === 0) message += `<br>💀 ${defender.name}이(가) 쓰러졌습니다!`;
+            await logAction(message, "damage");
+        }
+        
+        async function executeSkill(attacker, target, skillId) {
+            const skill = SKILLS[skillId];
+            if (!skill) return;
+
+            if (skill.isAoe) {
+                const targets = findTargetsInAoe(target.x, target.y, skill.aoeRange, skill.aoeShape, attacker.type);
+                if (targets.length > 0) {
+                    await logAction(`🔥 ${attacker.name}이(가) ${skill.name}(으)로 광역 공격!`, "system");
+                    await Promise.all(targets.map(t => applyDamage(attacker, t, skillId)));
+                } else {
+                    await logAction(`🔥 ${attacker.name}의 ${skill.name}! 하지만 아무도 맞지 않았습니다.`, "system");
+                }
+            } else {
+                await applyDamage(attacker, target, skillId);
+            }
+            await nextTurn();
+        }
+
+        async function undoMove() {
+            const selectedCharacter = characters.find(c => c.id === selectedCharacterId);
+            if (!selectedCharacter || !preMovePosition) return;
+            await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacter.id), { x: preMovePosition.x, y: preMovePosition.y });
+            await logAction(`↩️ ${selectedCharacter.name}이(가) 이동을 취소했습니다.`, "system");
+            turnPhase = 'MOVE';
+            render();
+        }
+        
+        // --- Rendering & UI ---
+        function showCustomModal(title, message, buttons) {
+            document.getElementById('custom-modal-title').textContent = title;
+            document.getElementById('custom-modal-message').innerHTML = message;
+            const buttonsContainer = document.getElementById('custom-modal-buttons');
+            buttonsContainer.innerHTML = '';
+            buttons.forEach(btn => {
+                const buttonEl = document.createElement('button');
+                buttonEl.textContent = btn.text;
+                buttonEl.className = `${btn.class} text-white font-bold py-2 px-4 transition`;
+                buttonEl.onclick = () => { closeModal('custom-modal'); if (btn.onClick) btn.onClick(); };
+                buttonsContainer.appendChild(buttonEl);
+            });
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+
+        function initializeBoard() {
+            if (isBoardInitialized) return;
+            gameBoard.innerHTML = '';
+            for (let y = 0; y < BOARD_SIZE; y++) {
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    gameBoard.appendChild(cell);
+                }
+            }
+            isBoardInitialized = true;
+        }
+
+        function highlightRange(char, skillId) {
+            document.querySelectorAll('.combat-range').forEach(cell => cell.classList.remove('combat-range', 'attack-range-move', 'attack-range-skill'));
+            if (!char || char.x === null || !SKILLS[skillId]) return;
+
+            const skill = SKILLS[skillId];
+            const range = skill.range;
+            const size = char.size || 1;
+            const isAttack = skill.type !== 'Utility';
+            const shape = skill.rangeShape || 'diamond';
+            const validCells = new Set();
+
+            if (isAttack) {
+                for (let ex = 0; ex < size; ex++) for (let ey = 0; ey < size; ey++) {
+                    const originX = char.x + ex, originY = char.y + ey;
+                    for (let dy = -range; dy <= range; dy++) for (let dx = -range; dx <= range; dx++) {
+                        let inShape = (shape === 'diamond' && Math.abs(dx) + Math.abs(dy) <= range) ||
+                                      (shape === 'square' && Math.abs(dx) <= range && Math.abs(dy) <= range) ||
+                                      (shape === 'cross' && (dx === 0 || dy === 0));
+                        if (inShape) {
+                            const targetX = originX + dx, targetY = originY + dy;
+                            if (targetX >= 0 && targetX < BOARD_SIZE && targetY >= 0 && targetY < BOARD_SIZE) validCells.add(`${targetX},${targetY}`);
+                        }
+                    }
+                }
+                if (!skill.isAoe) {
+                    for (let ex = 0; ex < size; ex++) for (let ey = 0; ey < size; ey++) validCells.delete(`${char.x + ex},${char.y + ey}`);
+                }
+            } else {
+                const originX = char.x, originY = char.y;
+                for (let dy = -range; dy <= range; dy++) for (let dx = -range; dx <= range; dx++) {
+                    if (Math.abs(dx) + Math.abs(dy) <= range) {
+                        const targetX = originX + dx, targetY = originY + dy;
+                        if (targetX >= 0 && targetX < BOARD_SIZE && targetY >= 0 && targetY < BOARD_SIZE) validCells.add(`${targetX},${targetY}`);
+                    }
+                }
+            }
+
+            const className = isAttack ? 'attack-range-skill' : 'attack-range-move';
+            validCells.forEach(coord => {
+                const [x, y] = coord.split(',');
+                document.querySelector(`.cell[data-x='${x}'][data-y='${y}']`)?.classList.add('combat-range', className);
+            });
+        }
+        
+        function renderCharacterSelectionOverlay() {
+            const selectionList = document.getElementById('selection-list');
+            selectionList.innerHTML = characters.length === 0 ? `<div class="text-white/70 text-lg w-full text-center p-4">캐릭터를 불러오는 중...</div>` : '';
+            if (characters.length === 0) return;
+            
+            const renderCard = (char) => {
+                const isSelected = char.id === selectedCharacterId, isPlaced = char.x !== null, isDead = char.hp <= 0, isEnemy = char.type === 'ENEMY';
+                const canBeDragged = (gameState === 'PREPARATION' && !isDead) || (!isPlaced && !isDead);
+                const charCard = document.createElement('div');
+                charCard.className = `char-card-item ${isSelected ? 'selected' : ''} ${isEnemy ? 'enemy-card' : ''}`;
+                charCard.dataset.charId = char.id;
+                charCard.draggable = canBeDragged;
+                
+                if (char.imageUrl) charCard.style.backgroundImage = `url(${char.imageUrl})`;
+                else charCard.innerHTML = `<span class="card-placeholder font-title">${char.name.charAt(0)}</span>`;
+                if (isDead) { charCard.style.filter = 'grayscale(100%) opacity(0.7)'; charCard.draggable = false; }
+                
+                const infoContainer = document.createElement('div');
+                infoContainer.className = 'char-card-info';
+                infoContainer.innerHTML = `
+                    <div class="text-sm font-light ${isEnemy ? 'text-red-300' : 'text-gray-400'}">순서: ${char.turnOrder} (${char.type})</div>
+                    <div class="font-bold">${char.name} <span class="text-red-400 text-sm">${isDead ? '(사망)' : ''}</span></div>
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-white/80">${isPlaced ? `(${char.x}, ${char.y})` : '미배치 (드래그)'}</span>
+                        <button class="details-btn">상세</button>
+                    </div>`;
+                
+                infoContainer.querySelector('button').onclick = (e) => { e.stopPropagation(); openProfileModal(char); };
+                charCard.appendChild(infoContainer);
+                charCard.onclick = () => { if (isPlaced && !isDead) { selectedCharacterId = char.id; if(gameState === 'STARTED') { turnPhase = 'MOVE'; selectedSkill = 'move'; preMovePosition = { x: char.x, y: char.y }; } render(); } };
+                if (canBeDragged) charCard.ondragstart = (e) => e.dataTransfer.setData('text/plain', char.id);
+                return charCard;
+            };
+
+            const pcContainer = document.createElement('div');
+            pcContainer.className = 'flex gap-4';
+            characters.filter(c => c.type === 'PC').forEach(char => pcContainer.appendChild(renderCard(char)));
+            selectionList.appendChild(pcContainer);
+
+            const enemyContainer = document.createElement('div');
+            enemyContainer.className = 'flex gap-4 pl-4 border-l-2 border-red-800/50';
+            characters.filter(c => c.type === 'ENEMY').forEach(char => enemyContainer.appendChild(renderCard(char)));
+            selectionList.appendChild(enemyContainer);
+        }
+        
+        function renderSkillButtons(selectedChar, isCurrentTurn) {
+            skillControls.innerHTML = '';
+             if (gameState === 'PREPARATION') {
+                skillControls.innerHTML = `<h3 class="text-lg font-bold mb-2 text-yellow-400">준비 단계</h3><p class="text-sm text-gray-400">캐릭터를 드래그하거나 클릭하여 배치하세요.</p>`;
+                return;
+            }
+            if (!selectedChar || !isCurrentTurn) { skillControls.innerHTML = `<p class="text-sm text-gray-400">캐릭터를 선택하면 스킬이 표시됩니다.</p>`; return; }
+            if (selectedChar.hp <= 0 || selectedChar.x === null) { skillControls.innerHTML = `<p class="text-sm text-gray-500">${selectedChar.hp <= 0 ? '사망함' : '미배치 상태'}</p>`; return; }
+
+            let html = `<h3 class="text-lg font-bold mb-2 ${selectedChar.type === 'ENEMY' ? 'text-red-400' : 'text-green-400'}">${selectedChar.name} 행동</h3>`;
+            if (turnPhase === 'MOVE') {
+                html += `<p class="text-sm text-gray-400">이동할 위치를 선택하거나, 캐릭터를 클릭하여 이동을 건너뛰세요.</p>`;
+            } else { // ACTION phase
+                html += `<div class="flex flex-wrap gap-2">`;
+                selectedChar.skills.forEach(id => {
+                    const skill = SKILLS[id];
+                    if(skill) html += `<button data-skill-id="${id}" class="skill-btn ${selectedSkill === id ? 'ring-2 ring-green-400' : ''} bg-gray-700 hover:bg-gray-600 text-white p-2 flex items-center gap-2">${skill.icon} ${skill.name}</button>`;
+                });
+                html += `</div><button id="undo-move-btn" class="w-full mt-2 bg-gray-500 hover:bg-gray-600 text-white p-2">↩️ 이동 취소</button>`;
+            }
+            html += `<button id="end-turn-btn" class="w-full mt-4 bg-yellow-600 hover:bg-yellow-700 text-white p-2 font-bold">턴 종료</button>`;
+            
+            skillControls.innerHTML = html;
+            document.getElementById('end-turn-btn').onclick = nextTurn;
+            document.getElementById('undo-move-btn')?.addEventListener('click', undoMove);
+            document.querySelectorAll('.skill-btn').forEach(btn => btn.onclick = (e) => { selectedSkill = e.currentTarget.dataset.skillId; render(); });
+        }
+        
+        function updateCharacterList() {
+            const listContent = document.getElementById('char-list-content');
+            listContent.innerHTML = '';
+            if (!gameId || characters.length === 0) { listContent.innerHTML = `<p class="text-sm text-gray-400">${!gameId ? '게임에 참여해주세요...' : '캐릭터 로딩 중...'}</p>`; return; }
+            
+            const currentTurnChar = characters[currentTurnIndex];
+            characters.forEach(char => {
+                const isTurnChar = currentTurnChar && char.id === currentTurnChar.id && gameState === 'STARTED';
+                const charItem = document.createElement('div');
+                charItem.className = `p-2 rounded-md flex items-center justify-between cursor-pointer ${char.id === selectedCharacterId ? 'ring-2 ring-green-400' : 'hover:bg-gray-800'} ${isTurnChar && char.x !== null && char.hp > 0 ? 'turn-highlight' : ''}`;
+                
+                let statusColor = char.hp <= 0 ? 'text-gray-500' : (char.type === 'ENEMY' ? 'text-red-400' : 'text-gray-300');
+                if (isTurnChar && char.x !== null && char.hp > 0) statusColor = 'text-yellow-400';
+                
+                charItem.innerHTML = `<div class="flex items-center gap-2"><img src="${char.imageUrl || ''}" onerror="this.src='https://placehold.co/32x32/1f2937/a0aec0?text=${char.name.charAt(0)}'" class="w-8 h-8 rounded-full object-cover"><span class="font-semibold truncate">${char.name}</span></div><span class="text-xs ${statusColor}">${char.hp <= 0 ? '사망' : (char.x !== null ? `HP: ${char.hp}/${char.maxHp}` : '미배치')}</span>`;
+                charItem.onclick = () => { if (char.hp > 0) { selectedCharacterId = char.id; if(gameState === 'STARTED'){ turnPhase = 'MOVE'; selectedSkill = 'move'; preMovePosition = { x: char.x, y: char.y }; } render(); } };
+                listContent.appendChild(charItem);
+            });
+        }
+
+        function renderLogs(logs) {
+            const logList = document.getElementById('game-log-list');
+            logList.innerHTML = logs.map(log => {
+                const timeString = log.timestamp ? `[${log.timestamp.toDate().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}] ` : '';
+                return `<li class="log-${log.type}">${timeString}${log.message}</li>`;
+            }).join('') || `<li class="log-system">아직 기록된 행동이 없습니다.</li>`;
+        }
+        
+        function render() {
+            if (!isBoardInitialized) initializeBoard();
+            
+            document.querySelectorAll('.cell').forEach(cell => { cell.innerHTML = ''; cell.classList.remove('enemy-threat-range'); });
+
+            characters.filter(char => char.x !== null).forEach(char => {
+                const cell = gameBoard.querySelector(`.cell[data-x='${char.x}'][data-y='${char.y}']`);
+                if (cell) {
+                    const token = document.createElement('div');
+                    token.className = 'character-token';
+                    if (char.type === 'ENEMY') token.classList.add('enemy-token');
+                    token.style.width = `${char.size * 100}%`;
+                    token.style.height = `${char.size * 100}%`;
+                    if (char.hp <= 0) token.style.filter = 'grayscale(100%) opacity(0.5)';
+                    if(char.imageUrl) token.style.backgroundImage = `url(${char.imageUrl})`; else token.innerHTML = `<span class="token-placeholder font-title">${char.name.charAt(0)}</span>`;
+                    token.dataset.charId = char.id;
+                    const hpPercent = (char.hp / char.maxHp) * 100;
+                    token.innerHTML += `<div class="absolute bottom-0 left-0 w-full h-1 bg-gray-900/70 rounded-b-full overflow-hidden"><div style="width: ${hpPercent}%;" class="h-full ${hpPercent > 50 ? 'bg-green-500' : hpPercent > 20 ? 'bg-yellow-500' : 'bg-red-500'}"></div></div>`;
+                    if (char.id === selectedCharacterId) token.classList.add('selected-character');
+                    cell.appendChild(token);
+                }
+            });
+
+            const currentTurnChar = characters.length > 0 ? characters[currentTurnIndex] : null;
+
+            if (gameState === 'PREPARATION') {
+                turnStatus.textContent = `준비 단계 (라운드 ${round})`;
+                turnStatus.style.color = 'var(--text-secondary)';
+            } else {
+                 turnStatus.textContent = currentTurnChar ? `Round ${round} - ${currentTurnChar.name}` : (gameId ? "배치 대기 중..." : "게임 시작 대기 중...");
+                if(currentTurnChar) turnStatus.style.color = currentTurnChar.type === 'ENEMY' ? '#f87171' : '#34d399';
+            }
+            
+            const selectedChar = characters.find(c => c.id === selectedCharacterId);
+            const isMyTurn = selectedChar && currentTurnChar && selectedChar.id === currentTurnChar.id;
+
+            if (gameState === 'STARTED' && isMyTurn) highlightRange(selectedChar, turnPhase === 'MOVE' ? 'move' : selectedSkill);
+            else highlightRange(null, null);
+            
+            renderSkillButtons(selectedChar, isMyTurn);
+            updateCharacterList();
+            renderCharacterSelectionOverlay();
+        }
+
+        window.openProfileModal = (charId) => openProfileModal(characters.find(c => c.id === charId));
+        
+        function openProfileModal(character, editMode = false) {
+            if (!character) return;
+            const contentContainer = profileModal.querySelector('#modal-content');
+            const isEnemy = character.type === 'ENEMY';
+            
+            if (editMode) {
+                const skillOptions = Object.values(SKILLS).filter(s => s.type !== 'Utility');
+                const skillSelects = [1, 2, 3].map(index => {
+                    const currentSkill = character.skills?.[index - 1] || 'none';
+                    return `<div><label class="text-sm text-gray-400">스킬 ${index}</label><select id="edit-skill-${index}" class="form-input mt-1"><option value="none">-- 없음 --</option>${skillOptions.map(skill => `<option value="${skill.id}" ${skill.id === currentSkill ? 'selected' : ''}>${skill.name}</option>`).join('')}</select></div>`;
+                }).join('');
+                
+                contentContainer.innerHTML = `<div class="modal-content rounded-md shadow-2xl p-8 w-full max-w-2xl bg-gray-900 border border-gray-700">
+                    <div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold font-title text-accent-primary">수정: ${character.name}</h3><button id="close-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button></div>
+                    <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-4">
+                        <div><label class="text-gray-400">이름</label><input id="edit-name" class="form-input mt-1" value="${character.name}"></div>
+                        <div><label class="text-gray-400">이미지 URL</label><input id="edit-image-url" class="form-input mt-1" value="${character.imageUrl || ''}"></div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="text-gray-400">HP</label><input id="edit-hp" type="number" class="form-input mt-1" value="${character.hp}"></div><div><label class="text-gray-400">최대 HP</label><input id="edit-max-hp" type="number" class="form-input mt-1" value="${character.maxHp}"></div>
+                            <div><label class="text-gray-400">최소 공격력</label><input id="edit-min-attack" type="number" class="form-input mt-1" value="${character.minAttack}"></div><div><label class="text-gray-400">최대 공격력</label><input id="edit-max-attack" type="number" class="form-input mt-1" value="${character.maxAttack}"></div>
+                            <div><label class="text-gray-400">최소 방어력</label><input id="edit-min-defense" type="number" class="form-input mt-1" value="${character.minDefense}"></div><div><label class="text-gray-400">최대 방어력</label><input id="edit-max-defense" type="number" class="form-input mt-1" value="${character.maxDefense}"></div>
+                            <div><label class="text-gray-400">크기 (예: 1, 2)</label><input id="edit-size" type="number" class="form-input mt-1" value="${character.size || 1}"></div>
+                        </div><h4 class="text-lg font-bold text-gray-300 pt-4">스킬 선택</h4><div class="grid grid-cols-3 gap-4">${skillSelects}</div>
+                    </div><div class="mt-8 flex gap-4"><button id="save-changes-btn" class="w-full bg-green-600 font-bold py-3">저장</button><button id="cancel-edit-btn" class="w-full bg-gray-600 font-bold py-3">취소</button></div></div>`;
+                
+                document.getElementById('save-changes-btn').onclick = async () => {
+                    const updates = { 
+                        name: document.getElementById('edit-name').value, 
+                        imageUrl: document.getElementById('edit-image-url').value.trim(), 
+                        hp: parseInt(document.getElementById('edit-hp').value), 
+                        maxHp: parseInt(document.getElementById('edit-max-hp').value), 
+                        minAttack: parseInt(document.getElementById('edit-min-attack').value),
+                        maxAttack: parseInt(document.getElementById('edit-max-attack').value),
+                        minDefense: parseInt(document.getElementById('edit-min-defense').value),
+                        maxDefense: parseInt(document.getElementById('edit-max-defense').value),
+                        size: parseInt(document.getElementById('edit-size').value) || 1, 
+                        skills: [document.getElementById('edit-skill-1').value, document.getElementById('edit-skill-2').value, document.getElementById('edit-skill-3').value].filter(s => s && s !== 'none') 
+                    };
+                    if (gameId) await updateDoc(doc(db, 'games', gameId, 'characters', character.id), updates);
+                    openProfileModal({...character, ...updates}, false);
+                };
+                document.getElementById('cancel-edit-btn').onclick = () => openProfileModal(character, false);
+            } else {
+                const statIcon = (type) => ({
+                    hp: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>`,
+                    attack: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>`,
+                    defense: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z" /></svg>`,
+                    size: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>`
+                }[type] || '');
+
+                const buildStat = (type, label, value) => `<div class="stat-item">${statIcon(type)}<div><div class="value">${value}</div><div class="label">${label}</div></div></div>`;
+                
+                contentContainer.innerHTML = `<div class="profile-modal-container rounded-lg ${isEnemy ? 'enemy-profile' : ''}">
+                    <button id="close-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button>
+                    <div class="profile-char-image" style="background-image: url('${character.imageUrl || `https://placehold.co/400x600/1a1a1a/444444?text=${character.name.charAt(0)}`}')"></div>
+                    <div class="profile-stats-panel">
+                        <div class="profile-content-scroll">
+                            <div>
+                                <h2 class="profile-char-name font-title">${character.name}</h2>
+                                <p class="profile-char-type">${character.type}</p>
+                                <div class="profile-stats-grid">
+                                    ${buildStat('hp', '생명력', `${character.hp} / ${character.maxHp}`)}
+                                    ${buildStat('attack', '공격력', `${character.minAttack} - ${character.maxAttack}`)}
+                                    ${buildStat('defense', '방어력', `${character.minDefense} - ${character.maxDefense}`)}
+                                    ${buildStat('size', '크기', `${character.size}x${character.size}`)}
+                                </div>
+                            </div>
+                            <div class="mt-6">
+                                <h3 class="text-xl font-bold mb-3">보유 스킬</h3>
+                                <div class="space-y-2">
+                                    ${character.skills.map(id => SKILLS[id]).filter(Boolean).map(s => `<div class="p-3 bg-gray-800/50 rounded-md flex items-center gap-3"><span class="text-2xl">${s.icon}</span><div><strong>${s.name}</strong><small class="block text-gray-400">${s.isAoe ? `광역(범위: ${s.aoeRange})` : `단일`}, 사거리: ${s.range}</small></div></div>`).join('') || '<p class="text-gray-500">보유 스킬이 없습니다.</p>'}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-auto pt-4 flex-shrink-0">
+                           <button id="edit-char-btn" class="w-full bg-gray-600 hover:bg-gray-700 font-bold py-3 px-4">캐릭터 수정</button>
+                        </div>
+                    </div>
+                </div>`;
+                document.getElementById('edit-char-btn').onclick = () => openProfileModal(character, true);
+            }
+            profileModal.classList.remove('hidden');
+            document.getElementById('close-modal-btn').onclick = () => closeModal('profile-modal');
+        }
+        function closeModal(modalId) { document.getElementById(modalId).classList.add('hidden'); }
+        
+        function openAdminModal() {
+            if (!gameId) return;
+            const container = document.getElementById('admin-modal-content');
+            container.innerHTML = `<div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold font-title" style="color: var(--accent-primary);">관리자 패널</h3><button id="close-admin-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button></div>`;
+
+            // Game State Management
+            container.innerHTML += `<div class="mb-8 p-4 border border-gray-700 rounded-md">
+                <h4 class="font-bold text-lg mb-4 text-yellow-400">게임 진행 관리</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <button id="set-prep-phase-btn" class="w-full bg-blue-600 p-2">준비 단계로 설정</button>
+                    <button id="set-start-phase-btn" class="w-full bg-green-600 p-2">게임 시작</button>
+                    <button id="prev-turn-btn" class="w-full bg-gray-600 p-2">이전 턴으로</button>
+                    <button id="next-turn-btn" class="w-full bg-gray-600 p-2">다음 턴으로</button>
+                </div>
+                <div class="mt-4">
+                    <label for="max-rounds-input" class="block text-sm font-medium text-gray-300">최대 라운드 (0=무한)</label>
+                    <div class="flex gap-2 mt-1">
+                        <input type="number" id="max-rounds-input" class="form-input" value="${maxRounds}">
+                        <button id="save-max-rounds-btn" class="bg-indigo-600 p-2 px-4">저장</button>
+                    </div>
+                </div>
+            </div>`;
+
+            // Skill Management
+            let skillHtml = `<div id="admin-skill-list" class="space-y-4">`;
+            Object.keys(SKILLS).sort().forEach(id => {
+                const s = SKILLS[id];
+                skillHtml += `<div class="p-4 rounded-none bg-gray-800 border-l-4 border-gray-600"><h4 class="font-bold text-lg">${s.icon} ${s.name}</h4><div class="grid grid-cols-3 gap-2 mt-2"><input id="admin-name-${id}" class="form-input" value="${s.name}"><input id="admin-range-${id}" type="number" class="form-input" value="${s.range}"><input id="admin-multiplier-${id}" type="number" step="0.1" class="form-input" value="${s.multiplier}"></div><button data-skill-id="${id}" class="save-skill-btn mt-2 bg-green-600 p-2 w-full">저장</button></div>`;
+            });
+             skillHtml += `<div class="mt-8 pt-4 border-t border-gray-700">
+                <h4 class="font-bold text-lg mb-2 text-green-400">새 스킬 추가</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <input id="new-skill-id" placeholder="스킬 ID (e.g., fireball)" class="form-input">
+                    <input id="new-skill-name" placeholder="스킬 이름" class="form-input">
+                    <select id="new-skill-type" class="form-input bg-gray-700"><option value="Melee">Melee</option><option value="Ranged">Ranged</option><option value="Utility">Utility</option></select>
+                    <input id="new-skill-icon" placeholder="아이콘 (e.g., 🔥)" class="form-input">
+                    <input id="new-skill-range" type="number" placeholder="범위" class="form-input">
+                    <input id="new-skill-multiplier" type="number" step="0.1" placeholder="피해 계수" class="form-input">
+                </div>
+                <button id="add-new-skill-btn" class="mt-4 bg-blue-600 p-2 w-full">새 스킬 저장</button>
+            </div></div>`;
+            container.innerHTML += skillHtml;
+
+            // Character Management
+            container.innerHTML += `<div class="mt-8 pt-4 border-t border-gray-700">
+                <h4 class="font-bold text-lg mb-2 text-green-400">새 캐릭터/에너미 추가</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <input id="new-char-name" placeholder="이름" class="form-input">
+                    <select id="new-char-type" class="form-input bg-gray-700"><option value="PC">PC</option><option value="ENEMY">ENEMY</option></select>
+                    <input id="new-char-imageUrl" placeholder="이미지 URL" class="form-input col-span-2">
+                    <input id="new-char-hp" type="number" placeholder="HP" class="form-input" value="100">
+                    <input id="new-char-min-attack" type="number" placeholder="최소 공격력" class="form-input" value="10">
+                    <input id="new-char-max-attack" type="number" placeholder="최대 공격력" class="form-input" value="15">
+                    <input id="new-char-min-defense" type="number" placeholder="최소 방어력" class="form-input" value="3">
+                    <input id="new-char-max-defense" type="number" placeholder="최대 방어력" class="form-input" value="7">
+                    <input id="new-char-size" type="number" placeholder="크기" class="form-input" value="1">
+                    <input id="new-char-skills" placeholder="스킬 ID (e.g. slash,shoot)" class="form-input col-span-2">
+                </div>
+                <button id="add-new-char-btn" class="mt-4 bg-blue-600 p-2 w-full">새 캐릭터 저장</button>
+            </div>`;
+
+            document.getElementById('close-admin-modal-btn').onclick = () => closeModal('admin-modal');
+
+            document.getElementById('set-prep-phase-btn').onclick = async () => {
+                if (gameId) {
+                    await updateDoc(doc(db, 'games', gameId), { gameState: 'PREPARATION', currentTurnIndex: 0, currentTurnCharId: null, round: 1 });
+                    await logAction("🛠️ 관리자가 게임을 준비 단계로 설정했습니다.", "system");
+                    showCustomModal("상태 변경", "게임이 준비 단계로 설정되었습니다. 자유롭게 토큰을 배치하세요.", [{text:"확인", class:"bg-blue-600"}]);
+                }
+            };
+            document.getElementById('set-start-phase-btn').onclick = async () => {
+                if (gameId) {
+                    await updateDoc(doc(db, 'games', gameId), { gameState: 'STARTED' });
+                    await logAction("⚔️ 게임이 시작되었습니다! 첫 번째 턴부터 진행합니다.", "system");
+                    showCustomModal("게임 시작", "전투를 시작합니다!", [{text:"확인", class:"bg-green-600"}]);
+                }
+            };
+            document.getElementById('prev-turn-btn').onclick = async () => { if (gameId) await previousTurn(); };
+            document.getElementById('next-turn-btn').onclick = async () => { if (gameId) await nextTurn(); };
+            document.getElementById('save-max-rounds-btn').onclick = async () => {
+                if (gameId) {
+                    const newMaxRounds = parseInt(document.getElementById('max-rounds-input').value) || 0;
+                    await updateDoc(doc(db, 'games', gameId), { maxRounds: newMaxRounds });
+                    showCustomModal("설정 저장", `최대 라운드가 ${newMaxRounds > 0 ? newMaxRounds : '무한'}으로 설정되었습니다.`, [{text:"확인", class:"bg-indigo-600"}]);
+                }
+            };
+            
+            document.querySelectorAll('.save-skill-btn').forEach(btn => {
+                btn.onclick = async e => {
+                    const id = e.target.dataset.skillId;
+                    const updated = { ...SKILLS[id], name: document.getElementById(`admin-name-${id}`).value, range: parseFloat(document.getElementById(`admin-range-${id}`).value), multiplier: parseFloat(document.getElementById(`admin-multiplier-${id}`).value) };
+                    if (gameId) { await setDoc(doc(db, 'games', gameId), { skills: { ...SKILLS, [id]: updated } }, { merge: true }); }
+                };
+            });
+            
+            document.getElementById('add-new-skill-btn').onclick = async () => {
+                const newId = document.getElementById('new-skill-id').value.trim();
+                if (!newId || SKILLS[newId]) {
+                    showCustomModal("오류", "유효하지 않거나 중복된 스킬 ID입니다.", [{text:"확인", class:"bg-red-600"}]);
+                    return;
+                }
+                const newSkill = { id: newId, name: document.getElementById('new-skill-name').value, type: document.getElementById('new-skill-type').value, icon: document.getElementById('new-skill-icon').value, range: parseFloat(document.getElementById('new-skill-range').value) || 0, multiplier: parseFloat(document.getElementById('new-skill-multiplier').value) || 0, };
+                if (gameId) {
+                    await setDoc(doc(db, 'games', gameId), { skills: { ...SKILLS, [newId]: newSkill } }, { merge: true });
+                    showCustomModal("성공", `'${newSkill.name}' 스킬이 추가되었습니다.`, [{text:"확인", class:"bg-green-600"}]);
+                }
+            };
+
+            document.getElementById('add-new-char-btn').onclick = async () => {
+                const name = document.getElementById('new-char-name').value.trim();
+                if (!name) { showCustomModal("오류", "이름을 입력해야 합니다.", [{text:"확인", class:"bg-red-600"}]); return; }
+                const skills = document.getElementById('new-char-skills').value.split(',').map(s => s.trim()).filter(Boolean);
+                const newChar = { name: name, type: document.getElementById('new-char-type').value, imageUrl: document.getElementById('new-char-imageUrl').value.trim(), hp: parseInt(document.getElementById('new-char-hp').value) || 100, maxHp: parseInt(document.getElementById('new-char-hp').value) || 100, minAttack: parseInt(document.getElementById('new-char-min-attack').value) || 10, maxAttack: parseInt(document.getElementById('new-char-max-attack').value) || 15, minDefense: parseInt(document.getElementById('new-char-min-defense').value) || 3, maxDefense: parseInt(document.getElementById('new-char-max-defense').value) || 7, size: parseInt(document.getElementById('new-char-size').value) || 1, skills: skills, x: null, y: null, turnOrder: characters.length + 1 };
+                if (gameId) {
+                    await addDoc(collection(db, "games", gameId, "characters"), newChar);
+                    showCustomModal("성공", `'${newChar.name}' 캐릭터가 추가되었습니다.`, [{text:"확인", class:"bg-green-600"}]);
+                }
+            };
+
+            adminModal.classList.remove('hidden');
+        }
+
+        // --- Event Listeners ---
+        async function handlePreparationClick(e) {
+            const token = e.target.closest('.character-token');
+            const cell = e.target.closest('.cell');
+            if (!cell) return;
+
+            if (token) {
+                selectedCharacterId = token.dataset.charId;
+                render();
+            } else if (selectedCharacterId) {
+                const newX = parseInt(cell.dataset.x);
+                const newY = parseInt(cell.dataset.y);
+                const targetChar = characters.find(c => c.id === selectedCharacterId);
+                if (targetChar && canPlaceCharacter(targetChar, newX, newY)) {
+                    await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacterId), { x: newX, y: newY });
+                    selectedCharacterId = null;
+                }
+            } else {
+                 selectedCharacterId = null;
+                 render();
+            }
+        }
+
+        async function handleCombatClick(e) {
+            const token = e.target.closest('.character-token');
+            const cell = e.target.closest('.cell');
+            if (!cell) return;
+            
+            const selectedCharacter = characters.find(c => c.id === selectedCharacterId);
+            const isMyTurn = selectedCharacter && characters[currentTurnIndex] && selectedCharacter.id === characters[currentTurnIndex].id;
+
+            if (isMyTurn) {
+                if (turnPhase === 'MOVE') {
+                    if (token && token.dataset.charId === selectedCharacterId) { turnPhase = 'ACTION'; selectedSkill = null; render(); return; } 
+                    const newX = parseInt(cell.dataset.x), newY = parseInt(cell.dataset.y);
+                    if (canPlaceCharacter(selectedCharacter, newX, newY) && cell.classList.contains('attack-range-move')) {
+                        await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacter.id), { x: newX, y: newY });
+                        await logAction(`🏃 ${selectedCharacter.name}이(가) (${newX}, ${newY})(으)로 이동했습니다.`, "move");
+                        turnPhase = 'ACTION'; selectedSkill = null; render();
+                    }
+                } else if (turnPhase === 'ACTION') {
+                    const skill = SKILLS[selectedSkill];
+                    if (!skill) return;
+                    if (skill.isAoe) {
+                        if (cell.classList.contains('attack-range-skill')) await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
+                    } else if (token && skill.type !== 'Utility') {
+                        const targetChar = characters.find(c => c.id === token.dataset.charId);
+                        if (targetChar && selectedCharacter.type !== targetChar.type && cell.classList.contains('attack-range-skill')) await executeSkill(selectedCharacter, targetChar, selectedSkill);
+                    }
+                }
+            } else {
+                 if (token) {
+                    const charId = token.dataset.charId;
+                    if (e.detail === 2) openProfileModal(characters.find(c => c.id === charId));
+                    else { 
+                        const clickedChar = characters.find(c => c.id === charId);
+                        if(clickedChar && characters[currentTurnIndex]?.id === charId) { selectedCharacterId = charId; turnPhase = 'MOVE'; selectedSkill = 'move'; preMovePosition = { x: clickedChar.x, y: clickedChar.y }; render(); }
+                    }
+                 } else { selectedCharacterId = null; selectedSkill = null; render(); }
+            }
+        }
+
+        async function gameBoardClick(e) {
+            if(!gameId) return;
+            if (gameState === 'PREPARATION') {
+                await handlePreparationClick(e);
+            } else if (gameState === 'STARTED') {
+                await handleCombatClick(e);
+            }
+        }
+        
+        function isCellOccupied(targetX, targetY, movingCharId = null) {
+            return characters.some(char => {
+                if (char.id === movingCharId || char.x === null) return false;
+                const size = char.size || 1;
+                return targetX >= char.x && targetX < (char.x + size) && targetY >= char.y && targetY < (char.y + size);
+            });
+        }
+        function canPlaceCharacter(charToPlace, targetX, targetY) {
+            const size = charToPlace.size || 1;
+            if (targetX < 0 || targetY < 0 || targetX + size > BOARD_SIZE || targetY + size > BOARD_SIZE) return false;
+            for (let i = 0; i < size; i++) for (let j = 0; j < size; j++) if (isCellOccupied(targetX + i, targetY + j, charToPlace.id)) return false;
+            return true;
+        }
+
+        createGameBtn.addEventListener('click', createGame);
+        joinGameBtn.addEventListener('click', () => joinGame(gameIdInput.value));
+        leaveGameBtn.addEventListener('click', leaveGame);
+        copyGameIdBtn.addEventListener('click', () => { gameIdDisplay.select(); document.execCommand('copy'); showCustomModal("복사 완료", "게임 코드가 클립보드에 복사되었습니다.", [{ text: "확인", class: "bg-green-600" }]); });
+        document.getElementById('overlay-toggle').addEventListener('click', (e) => {
+             const overlay = document.getElementById('character-selection-overlay');
+             overlay.classList.toggle('collapsed');
+             e.currentTarget.querySelector('svg').style.transform = overlay.classList.contains('collapsed') ? 'rotate(180deg)' : 'rotate(0deg)';
+        });
+        profileModal.addEventListener('click', e => { if (e.target.id === 'profile-modal') closeModal('profile-modal'); });
+        
+        document.getElementById('admin-panel-btn').addEventListener('click', () => { adminPasswordModal.classList.remove('hidden'); document.getElementById('admin-password-input').focus(); });
+        document.getElementById('cancel-admin-login-btn').addEventListener('click', () => closeModal('admin-password-modal'));
+        
+        document.getElementById('submit-admin-login-btn').addEventListener('click', async () => {
+            const input = document.getElementById('admin-password-input');
+            const errorP = document.getElementById('admin-password-error');
+            if (gameId) {
+                const gameDoc = await getDoc(doc(db, 'games', gameId));
+                const correctPassword = gameDoc.data().adminPassword || "0000";
+                if (input.value === correctPassword) {
+                    closeModal('admin-password-modal');
+                    openAdminModal();
+                    input.value = '';
+                    errorP.textContent = '';
+                } else {
+                    errorP.textContent = '비밀번호가 올바르지 않습니다.';
+                    input.value = '';
+                }
+            }
+        });
+
+        gameBoard.addEventListener('click', gameBoardClick);
+        gameBoard.addEventListener('dragover', e => e.preventDefault());
+        gameBoard.addEventListener('drop', async e => {
+            e.preventDefault(); if(!gameId) return;
+            const charId = e.dataTransfer.getData('text/plain'), cell = e.target.closest('.cell');
+            if (cell && charId) {
+                const targetChar = characters.find(c => c.id === charId);
+                if (targetChar && (gameState === 'PREPARATION' || targetChar.x === null)) {
+                    const newX = parseInt(cell.dataset.x);
+                    const newY = parseInt(cell.dataset.y);
+                    if (canPlaceCharacter(targetChar, newX, newY)) {
+                        await updateDoc(doc(db, 'games', gameId, 'characters', charId), { x: newX, y: newY });
+                        if (targetChar.x === null) {
+                           await logAction(`✅ ${targetChar.name}이(가) 전장에 합류했습니다.`, "join");
+                        }
+                    }
+                }
+            }
+        });
+
+        const applyTheme = (theme) => document.documentElement.classList.toggle('light', theme === 'light');
+        document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+            const newTheme = document.documentElement.classList.contains('light') ? 'dark' : 'light';
+            localStorage.setItem('theme', newTheme);
+            applyTheme(newTheme);
+        });
+        applyTheme(localStorage.getItem('theme') || 'dark');
+    </script>
+</body>
+</html>
+
