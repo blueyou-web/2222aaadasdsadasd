@@ -13,7 +13,7 @@
             --bg-primary: #1c1c1b;
             --bg-secondary: #1c1c1b;
             --bg-tertiary: #374151;
-            --bg-board: rgba(36, 36, 36, 0.5);
+            --bg-board: rgaba(36, 36, 36, 0.5);
             --border-primary: #D4B783;
             --border-secondary: #4b5563;
             --text-primary: #EAEAEA;
@@ -1602,50 +1602,52 @@
 
 
     function findTargetsInAoe(centerX, centerY, range, shape, skillType, attackerType) {
-        const affectedCells = new Set();
-        for (let dy = -range; dy <= range; dy++) {
-            for (let dx = -range; dx <= range; dx++) {
-                let inShape = (shape === 'diamond' && Math.abs(dx) + Math.abs(dy) <= range) || (shape === 'square');
-                if (inShape) {
-                    const x = centerX + dx;
-                    const y = centerY + dy;
-                    if (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE) affectedCells.add(`${x},${y}`);
-                }
+    const affectedCells = new Set();
+    for (let dy = -range; dy <= range; dy++) {
+        for (let dx = -range; dx <= range; dx++) {
+            let inShape = (shape === 'diamond' && Math.abs(dx) + Math.abs(dy) <= range) || (shape === 'square');
+            if (inShape) {
+                const x = centerX + dx;
+                const y = centerY + dy;
+                if (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE) affectedCells.add(`${x},${y}`);
             }
         }
-        
-        const targets = new Set();
-        characters.forEach(char => {
-            if (char.x !== null) {
-                const isEnemy = char.type !== attackerType;
-                const isAlly = char.type === attackerType;
-                
-                let isEligible = false;
-                
-                // Standard damage/heal targeting
-                if ((skillType === 'Heal' || skillType === 'Support') && isAlly && char.hp > 0) isEligible = true;
-                if (skillType !== 'Heal' && skillType !== 'Support' && isEnemy && char.hp > 0) isEligible = true;
-                
-                // Special case for Resurrect
-                const skill = SKILLS[selectedSkill];
-                if (skill && skill.targetType === 'ALLY_DEAD' && isAlly && char.hp <= 0) isEligible = true;
+    }
+    
+    const targets = new Set();
+    characters.forEach(char => {
+        if (char.x !== null) {
+            const isEnemy = char.type !== attackerType;
+            const isAlly = char.type === attackerType;
+            
+            let isEligible = false;
+            
+            // Standard damage/heal targeting
+            if ((skillType === 'Heal' || skillType === 'Support') && isAlly && char.hp > 0) isEligible = true;
+            if (skillType !== 'Heal' && skillType !== 'Support' && isEnemy && char.hp > 0) isEligible = true;
+            
+            // Special case for Resurrect
+            const skill = SKILLS[selectedSkill];
+            if (skill && skill.targetType === 'ALLY_DEAD' && isAlly && char.hp <= 0) isEligible = true;
 
-                if (isEligible) {
-                    const size = char.size || 1;
-                    for (let ex = 0; ex < size; ex++) {
-                        for (let ey = 0; ey < size; ey++) {
-                            // Hit check: If *any* cell occupied by the character is within the affected cells
-                            if (affectedCells.has(`${char.x + ex},${char.y + ey}`)) {
-                                targets.add(char);
-                                break;
-                            }
+            if (isEligible) {
+                const size = char.size || 1;
+                // 캐릭터가 차지하는 모든 칸(size x size)을 순회합니다.
+                for (let ex = 0; ex < size; ex++) {
+                    for (let ey = 0; ey < size; ey++) {
+                        // 캐릭터가 차지하는 칸 중 하나라도 스킬 범위(affectedCells)에 포함되면,
+                        // 대상을 'targets'에 추가하고 이 캐릭터에 대한 검사를 중단합니다.
+                        if (affectedCells.has(`${char.x + ex},${char.y + ey}`)) {
+                            targets.add(char);
+                            return; // forEach 루프에서 현재 반복을 종료하고 다음 캐릭터로 넘어갑니다.
                         }
                     }
                 }
             }
-        });
-        return Array.from(targets);
-    }
+        }
+    });
+    return Array.from(targets);
+}
 
     async function applyDamage(attacker, defender, skillId) {
         const skill = SKILLS[skillId];
@@ -1952,9 +1954,8 @@
                         let isClear = true;
                         for (let cx = targetX; cx < targetX + size; cx++) {
                             for (let cy = targetY; cy < targetY + size; cy++) {
-                                // Important: If we are checking the character's *current* position, it should always be considered clear for the purposes of drawing the valid range.
                                 if (cx >= char.x && cx < char.x + size && cy >= char.y && cy < char.y + size) {
-                                    continue; // Skip checking self-occupied cells against other tokens/obstacles
+                                    continue; 
                                 }
                                 
                                 if (isCellOccupied(cx, cy, char.id)) {
@@ -1982,9 +1983,14 @@
             for (let ex = 0; ex < size; ex++) for (let ey = 0; ey < size; ey++) {
                 const originX = char.x + ex, originY = char.y + ey;
                 for (let dy = -range; dy <= range; dy++) for (let dx = -range; dx <= range; dx++) {
+                    
+                    // --- 💡 여기가 핵심 수정 부분입니다 💡 ---
                     let inShape = (shape === 'diamond' && Math.abs(dx) + Math.abs(dy) <= range) ||
                                   (shape === 'square' && Math.abs(dx) <= range && Math.abs(dy) <= range) ||
-                                  (shape === 'cross' && (dx === 0 || dy === 0));
+                                  // '십자' 모양일 때, 가로/세로축에 있으면서 'range' 이내인 조건 추가
+                                  (shape === 'cross' && ((dx === 0 && Math.abs(dy) <= range) || (dy === 0 && Math.abs(dx) <= range)));
+                    // --- 수정 끝 ---
+
                     if (inShape) {
                         const targetX = originX + dx, targetY = originY + dy;
                         if (targetX >= 0 && targetX < BOARD_SIZE && targetY >= 0 && targetY < BOARD_SIZE) validCells.add(`${targetX},${targetY}`);
@@ -3096,154 +3102,161 @@ updates.isAuto = document.getElementById('edit-is-auto').checked;
     }
 
     async function handleCombatClick(e) {
-        const token = e.target.closest('.character-token');
-        const cell = e.target.closest('.cell'); 
-        if (!cell) return;
-        
-        // --- 여기가 핵심적인 수정 부분입니다 ---
-        // 클릭이 발생하기 "전"에 선택되어 있던 캐릭터 ID를 미리 저장합니다.
-        const previouslySelectedCharId = selectedCharacterId; 
-        // ------------------------------------
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
 
-        const selectedCharacter = characters.find(c => c.id === selectedCharacterId);
-        const currentTurnChar = characters[currentTurnIndex];
-        
-        const isControllable = selectedCharacter && canControlCharacter(selectedCharacter.id);
-        
-        const clickedCharId = token ? token.dataset.charId : null;
-        const clickedChar = characters.find(c => c.id === clickedCharId);
+    // --- 💡 1. 클릭된 캐릭터를 찾는 로직 (수정됨) ---
+    const cellX = parseInt(cell.dataset.x);
+    const cellY = parseInt(cell.dataset.y);
+    const tokenOnCell = e.target.closest('.character-token');
+    let clickedChar = null; // 'let'으로 선언하여 재할당
 
-        if (e.detail === 2 && clickedChar) {
-            openProfileModal(clickedChar);
-            return;
-        }
-        
-        // Phase 1: Selection/Start Move
-        if (clickedCharId && currentTurnChar?.id === clickedCharId && (isAdmin || loggedInCharId === clickedCharId)) {
-            selectedCharacterId = clickedCharId;
-            
-            if (turnPhase === 'MOVE') {
-                const cellX = parseInt(cell.dataset.x);
-                const cellY = parseInt(cell.dataset.y);
-                
-                const isClickOnMarker = e.target.closest('.turn-marker'); 
-                
-                const isClickOnSelfCell = cellX >= clickedChar.x && cellX < (clickedChar.x + (clickedChar.size || 1)) &&
-                                          cellY >= clickedChar.y && cellY < (clickedChar.y + (clickedChar.size || 1));
-                
-                // --- 조건문 수정 ---
-                // "이전에 선택된 캐릭터"와 "지금 클릭한 캐릭터"가 같을 때만 제자리 이동으로 판정합니다.
-                if (isClickOnMarker || (isClickOnSelfCell && previouslySelectedCharId === clickedCharId)) {
-                    turnPhase = 'ACTION'; 
-                    selectedSkill = null;
-                    preMovePosition = { x: clickedChar.x, y: clickedChar.y }; 
-                    logAction(`⏩ ${clickedChar.name}이(가) 제자리 이동으로 단계를 건너뛰었습니다.`, "system");
-                    render();
-                    return;
-                }
-            }
-            
-            turnPhase = 'MOVE';
-            selectedSkill = 'move';
-            preMovePosition = { x: clickedChar.x, y: clickedChar.y };
-            render();
-            return;
-        }
+    if (tokenOnCell) {
+        // 기본적으로 토큰이 감지되면 해당 캐릭터를 찾습니다. (주로 1x1 토큰이나 대형 토큰의 왼쪽 상단 칸)
+        clickedChar = characters.find(c => c.id === tokenOnCell.dataset.charId);
+    } else {
+        // 만약 토큰이 직접 감지되지 않았다면 (대형 토큰의 다른 부분을 클릭했다면),
+        // 클릭한 셀 좌표를 포함하는 대형 캐릭터가 있는지 직접 순회하여 찾습니다.
+        clickedChar = characters.find(c =>
+            c.x !== null &&
+            c.size > 1 &&
+            cellX >= c.x && cellX < (c.x + c.size) &&
+            cellY >= c.y && cellY < (c.y + c.size)
+        );
+    }
+    // clickedCharId를 여기서 한 번만 선언하여 오류를 해결합니다.
+    const clickedCharId = clickedChar ? clickedChar.id : null;
+    // --- 수정된 로직 끝 ---
 
-        // --- (이하 코드는 기존과 동일합니다) ---
 
-        if (!isControllable) { 
-             selectedCharacterId = null; 
-             selectedSkill = null; 
-             render(); 
-             return;
-        }
+    // --- 💡 2. 기존 로직은 그대로 유지 ---
+    const previouslySelectedCharId = selectedCharacterId;
+    const selectedCharacter = characters.find(c => c.id === selectedCharacterId);
+    const currentTurnChar = characters[currentTurnIndex];
+    const isControllable = selectedCharacter && canControlCharacter(selectedCharacter.id);
+
+    if (e.detail === 2 && clickedChar) {
+        openProfileModal(clickedChar);
+        return;
+    }
+
+    // Phase 1: Selection/Start Move
+    if (clickedCharId && currentTurnChar?.id === clickedCharId && (isAdmin || loggedInCharId === clickedCharId)) {
+        selectedCharacterId = clickedCharId;
 
         if (turnPhase === 'MOVE') {
-            const newX = parseInt(cell.dataset.x), newY = parseInt(cell.dataset.y);
-            const tileType = boardTiles[`${newX},${newY}`]?.type;
+            const isClickOnMarker = e.target.closest('.turn-marker');
+            const isClickOnSelfCell = cellX >= clickedChar.x && cellX < (clickedChar.x + (clickedChar.size || 1)) &&
+                                      cellY >= clickedChar.y && cellY < (clickedChar.y + (clickedChar.size || 1));
 
-            if (tileType === 'obstacle' && !isAdmin) {
-                showCustomModal("이동 불가", "이 칸은 장애물입니다. 이동할 수 없습니다.", [{ text: "확인", class: "bg-red-600" }]);
-                return;
-            }
-            
-            if (cell.classList.contains('attack-range-move')) {
-                const isZeroMove = selectedCharacter.x === newX && selectedCharacter.y === newY;
-
-                await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacter.id), { x: newX, y: newY });
-                
-                if (isZeroMove) {
-                     logAction(`⏩ ${selectedCharacter.name}이(가) 제자리 이동했습니다.`, "move");
-                } else if (isAdmin) {
-                    await logAction(`👮 관리자가 ${selectedCharacter.name}을(를) (${selectedCharacter.x},${selectedCharacter.y})에서 (${newX}, ${newY})로 이동했습니다.`, "admin-move");
-                } else {
-                    await logAction(`🏃 ${selectedCharacter.name}이(가) (${newX}, ${newY})(으)로 이동했습니다.`, "move");
-                }
-                
-                turnPhase = 'ACTION'; 
+            if (isClickOnMarker || (isClickOnSelfCell && previouslySelectedCharId === clickedCharId)) {
+                turnPhase = 'ACTION';
                 selectedSkill = null;
+                preMovePosition = { x: clickedChar.x, y: clickedChar.y };
+                logAction(`⏩ ${clickedChar.name}이(가) 제자리 이동으로 단계를 건너뛰었습니다.`, "system");
                 render();
-            }
-        } else if (turnPhase === 'ACTION') {
-            const skill = SKILLS[selectedSkill];
-            if (!skill) {
-                showCustomModal("행동 필요", "사용할 스킬을 선택해 주세요.", [{ text: "확인", class: "bg-yellow-600" }]);
                 return;
             }
+        }
 
-            const isAttackSkill = skill.category === 'Attack';
-            const isHealOrSupport = skill.category === 'Heal' || skill.category === 'Support';
+        turnPhase = 'MOVE';
+        selectedSkill = 'move';
+        preMovePosition = { x: clickedChar.x, y: clickedChar.y };
+        render();
+        return;
+    }
+
+    if (!isControllable) {
+        selectedCharacterId = null;
+        selectedSkill = null;
+        render();
+        return;
+    }
+
+    if (turnPhase === 'MOVE') {
+        const newX = parseInt(cell.dataset.x), newY = parseInt(cell.dataset.y);
+        const tileType = boardTiles[`${newX},${newY}`]?.type;
+
+        if (tileType === 'obstacle' && !isAdmin) {
+            showCustomModal("이동 불가", "이 칸은 장애물입니다. 이동할 수 없습니다.", [{ text: "확인", class: "bg-red-600" }]);
+            return;
+        }
+        
+        if (cell.classList.contains('attack-range-move')) {
+            const isZeroMove = selectedCharacter.x === newX && selectedCharacter.y === newY;
+            await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacter.id), { x: newX, y: newY });
             
-            if (isAttackSkill) {
-                if (selectedCharacter.mp < skill.mpCost) {
-                    await logAction(`⚠️ ${selectedCharacter.name}이(가) 마나가 부족하여 ${skill.name}을(를) 시전하지 못했습니다.`, "system");
-                    render();
-                    return;
+            if (isZeroMove) {
+                 logAction(`⏩ ${selectedCharacter.name}이(가) 제자리 이동했습니다.`, "move");
+            } else if (isAdmin) {
+                await logAction(`👮 관리자가 ${selectedCharacter.name}을(를) (${selectedCharacter.x},${selectedCharacter.y})에서 (${newX}, ${newY})로 이동했습니다.`, "admin-move");
+            } else {
+                await logAction(`🏃 ${selectedCharacter.name}이(가) (${newX}, ${newY})(으)로 이동했습니다.`, "move");
+            }
+            
+            turnPhase = 'ACTION'; 
+            selectedSkill = null;
+            render();
+        }
+    } else if (turnPhase === 'ACTION') {
+        const skill = SKILLS[selectedSkill];
+        if (!skill) {
+            showCustomModal("행동 필요", "사용할 스킬을 선택해 주세요.", [{ text: "확인", class: "bg-yellow-600" }]);
+            return;
+        }
+
+        const isAttackSkill = skill.category === 'Attack';
+        const isHealOrSupport = skill.category === 'Heal' || skill.category === 'Support';
+        
+        if (isAttackSkill) {
+            if (selectedCharacter.mp < skill.mpCost) {
+                await logAction(`⚠️ ${selectedCharacter.name}이(가) 마나가 부족하여 ${skill.name}을(를) 시전하지 못했습니다.`, "system");
+                render();
+                return;
+            }
+            
+            if (skill.isAoe) {
+                if (cell.classList.contains('attack-range-skill')) {
+                    await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
+                }
+            } else if (clickedChar) {
+                const targetChar = clickedChar;
+                if (selectedCharacter.type !== targetChar.type && cell.classList.contains('attack-range-skill')) {
+                    await executeSkill(selectedCharacter, targetChar, selectedSkill);
+                }
+            }
+        } else if (isHealOrSupport) {
+            if (selectedCharacter.mp < skill.mpCost || (skill.hpCost && selectedCharacter.hp <= skill.hpCost)) {
+                await logAction(`⚠️ ${selectedCharacter.name}이(가) 자원(MP/HP)이 부족하여 ${skill.name}을(를) 시전하지 못했습니다.`, "system");
+                render();
+                return;
+            }
+            
+            if (skill.isAoe) {
+                if (cell.classList.contains('heal-range-skill')) {
+                    await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
+                }
+            } else if (clickedChar) {
+                const targetChar = clickedChar;
+                
+                let isValidTarget = false;
+                if (skill.targetType === 'ALLY_DEAD') {
+                    if (selectedCharacter.type === targetChar.type && targetChar.hp <= 0 && cell.classList.contains('heal-range-skill')) {
+                        isValidTarget = true;
+                    }
+                } else if (skill.targetType === 'ALLY') {
+                     if (selectedCharacter.type === targetChar.type && targetChar.hp > 0 && cell.classList.contains('heal-range-skill')) {
+                        isValidTarget = true;
+                    }
                 }
                 
-                if (skill.isAoe) {
-                    if (cell.classList.contains('attack-range-skill')) {
-                        await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
-                    }
-                } else if (clickedChar) {
-                    const targetChar = clickedChar;
-                    if (selectedCharacter.type !== targetChar.type && cell.classList.contains('attack-range-skill')) {
-                        await executeSkill(selectedCharacter, targetChar, selectedSkill);
-                    }
-                }
-            } else if (isHealOrSupport) {
-                if (selectedCharacter.mp < skill.mpCost || (skill.hpCost && selectedCharacter.hp <= skill.hpCost)) {
-                    await logAction(`⚠️ ${selectedCharacter.name}이(가) 자원(MP/HP)이 부족하여 ${skill.name}을(를) 시전하지 못했습니다.`, "system");
-                    render();
-                    return;
-                }
-                
-                if (skill.isAoe) {
-                    if (cell.classList.contains('heal-range-skill')) {
-                        await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
-                    }
-                } else if (clickedChar) {
-                    const targetChar = clickedChar;
-                    
-                    let isValidTarget = false;
-                    if (skill.targetType === 'ALLY_DEAD') {
-                        if (selectedCharacter.type === targetChar.type && targetChar.hp <= 0 && cell.classList.contains('heal-range-skill')) {
-                            isValidTarget = true;
-                        }
-                    } else if (skill.targetType === 'ALLY') {
-                         if (selectedCharacter.type === targetChar.type && targetChar.hp > 0 && cell.classList.contains('heal-range-skill')) {
-                            isValidTarget = true;
-                        }
-                    }
-                    
-                    if (isValidTarget) {
-                        await executeSkill(selectedCharacter, targetChar, selectedSkill);
-                    }
+                if (isValidTarget) {
+                    await executeSkill(selectedCharacter, targetChar, selectedSkill);
                 }
             }
         }
     }
+}
 
     async function gameBoardClick(e) {
         if(!gameId) return;
