@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>인터랙티브 게임 보드 (Firebase 연동)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- YouTube IFrame Player API 로드 -->
-    <script src="https://www.youtube.com/iframe_api"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto-Sans-KR:wght@400;700&display=swap" rel="stylesheet">
@@ -147,6 +145,9 @@
             max-height: 90vh;
             background-color: var(--bg-board);
             border: 1px solid var(--border-secondary);
+            /* NEW: Background image style */
+            background-size: cover;
+            background-position: center;
         }
         .cell {
             border: 1px solid var(--border-secondary);
@@ -202,6 +203,12 @@
             background-color: rgba(200, 50, 50, 0.07);
         }
 
+        @keyframes turn-glow {
+            0% { box-shadow: 0 0 5px var(--turn-highlight-color), 0 0 10px var(--turn-highlight-color) inset; }
+            50% { box-shadow: 0 0 15px var(--turn-highlight-color), 0 0 20px var(--turn-highlight-color) inset; }
+            100% { box-shadow: 0 0 5px var(--turn-highlight-color), 0 0 10px var(--turn-highlight-color) inset; }
+        }
+
         .character-token {
             width: 100%;
             height: 100%;
@@ -218,6 +225,11 @@
             align-items: center;
             justify-content: center;
             border: 2px solid transparent;
+        }
+
+        .character-token.current-turn-glow { /* NEW Class for Token Glow */
+            box-shadow: 0 0 10px rgba(0,0,0,0.5), 0 0 8px var(--turn-highlight-color);
+            animation: turn-glow 3s infinite ease-in-out;
         }
         
         .character-token.enemy-token {
@@ -276,25 +288,41 @@
 
         /* Turn Marker Animation */
         @keyframes bounce-arrow {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-8px); }
-        }
-
-        .turn-marker {
-            /* Now also acts as the skip move button */
-            position: absolute;
-            top: -2.5rem; 
-            left: 50%;
-            transform: translateX(-50%);
-            color: var(--turn-highlight-color);
-            font-size: 2rem;
-            line-height: 1;
-            animation: bounce-arrow 1s infinite ease-in-out;
-            z-index: 30;
-            filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.7));
-            cursor: pointer; /* Make it clickable for skipping move */
+            0%, 100% { 
+                transform: translateX(-50%) translateY(0); 
+            }
+            50% { 
+                transform: translateX(-50%) translateY(-6px); /* Reduced movement */
+            }
         }
         
+        .turn-marker {
+            /* Position adjusted slightly to the left */
+            position: absolute;
+            top: -1.5rem; /* Reduced distance */
+            left: 40%; /* Moved from 45% for more left shift */
+            transform: translateX(-50%);
+            color: var(--turn-highlight-color);
+            font-size: 1.5rem; /* Reduced size */
+            line-height: 1;
+            /* Bounce only */
+            animation: bounce-arrow 1s infinite ease-in-out; 
+            z-index: 30;
+            
+            /* Outer Glow Styles REMOVED from marker itself */
+            filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.7)); 
+            border-radius: 50%;
+            padding: 0 4px; 
+            background-color: rgba(0,0,0,0.1); 
+            cursor: pointer;
+        }
+        
+        .turn-marker:after {
+           /* GLOW REMOVED FROM MARKER :after */
+           content: none;
+        }
+        
+
         /* HP/MP Bar styles */
         .hp-mp-bar-container {
              position: absolute;
@@ -669,73 +697,12 @@
         #enemy-count.summary-count {
             background-image: linear-gradient(180deg, var(--gradient-start), var(--enemy-color));
         }
-        
-        /* NEW: Music Modal Range Slider Style */
-        #music-volume-slider {
-            background: linear-gradient(to right, var(--accent-primary), var(--accent-secondary));
-            /* Apply theme colors to the thumb */
-            --tw-ring-color: var(--accent-primary);
-        }
-        #music-volume-slider::-webkit-slider-thumb {
-            appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: var(--accent-primary);
-            cursor: pointer;
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
-            transition: background 0.3s;
-        }
-        #music-volume-slider::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: var(--accent-primary);
-            cursor: pointer;
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
-            transition: background 0.3s;
-            border: none;
-        }
-        
-        /* Volume Icon style */
-        #volume-icon {
-            color: var(--accent-primary);
-        }
-
     </style>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-4 overflow-x-hidden pt-60">
 
-    <!-- Hidden Music Player Container -->
-    <div id="music-player-container" class="fixed bottom-0 left-0 w-1 h-1 overflow-hidden pointer-events-none">
-        <div id="yt-player"></div>
-    </div>
-    
-    <!-- Music Control Modal (User Volume Control) -->
-    <div id="music-volume-modal" class="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[85] hidden">
-        <div class="modal-content rounded-md shadow-2xl p-6 w-full max-w-sm">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold font-title" style="color: var(--accent-primary);">배경 음악 제어</h3>
-                <button id="close-music-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button>
-            </div>
-            <div class="space-y-4">
-                <p id="current-track-display" class="text-sm text-gray-400 truncate">현재 트랙: 없음</p>
-                <div class="flex items-center gap-4">
-                    <button id="music-mute-toggle" class="p-2 bg-gray-600 hover:bg-gray-500 rounded-full">
-                        <svg id="volume-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464A6.001 6.001 0 006 12a6.001 6.001 0 009.536 3.536L20.07 20.07A1 1 0 0021 20V4a1 1 0 00-.93-.93L15.536 8.464z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    </button>
-                    <input type="range" id="music-volume-slider" min="0" max="100" value="50" class="flex-grow h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- End Music Control Modal -->
-
     <!-- NEW: Utility Control Group (Bottom Right) -->
     <div id="utility-controls">
-        <button id="music-control-btn" class="info-button p-3 rounded-full transition-transform hover:scale-110">
-            <svg id="music-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19h12M9 19l-1 1m13-1l1 1m-4-6h.01M17 10h.01"></path></svg>
-        </button>
         <button id="user-info-btn" class="info-button p-3 rounded-full transition-transform hover:scale-110">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
         </button>
@@ -804,7 +771,7 @@
             <p id="char-login-error" class="text-red-500 text-sm mt-2 h-4"></p>
             <div class="flex justify-end gap-4 mt-6">
                 <button id="cancel-char-login-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4">취소</button>
-                <button id="submit-char-login-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4">로그인</button>
+                <button id="submit-char-login-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4">확인</button>
             </div>
         </div>
     </div>
@@ -954,23 +921,6 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // --- Global YouTube Player Variables ---
-    window.ytPlayer = null;
-    window.isPlayerReady = false;
-    let localVolume = parseInt(localStorage.getItem('musicVolume')) || 50; // User's local volume setting
-    let localMuted = localStorage.getItem('musicMuted') === 'true';
-    let currentTrackId = null; // Track ID currently loaded in the player
-
-    // YouTube API Ready Callback (MUST be global)
-    window.onYouTubeIframeAPIReady = () => {
-        window.isPlayerReady = true;
-        console.log("YouTube API Ready.");
-        // Firebase listener will handle loading the player
-        if (currentTrackId) {
-            loadPlayer(currentTrackId, true);
-        }
-    };
-
     // --- Global Variables ---
     const BOARD_SIZE = 10;
     let characters = [];
@@ -999,11 +949,12 @@
     let boardTiles = {}; // Stores map features { "x,y": { type: 'obstacle' | 'damage' | 'normal', data: {} } }
     let isMapEditMode = false; // Flag for admin map editing
     let currentTileType = 'normal'; // The tile type the admin is currently placing
+    let boardBackgroundImage = ''; // NEW: Background image URL
     const DAMAGE_TILE_DAMAGE = 10;
     const MP_REGEN_PER_TURN = 10; // New: Mana regeneration per turn
 
     const DEFAULT_SKILLS = {
-        'move': { id: 'move', name: '이동', type: 'Utility', range: 2, rangeShape: 'diamond', multiplier: 0, icon: '🏃', mpCost: 0, category: 'Utility' }, // 기본 이동 거리를 2로 설정
+        'move': { id: 'move', name: '이동', type: 'Utility', range: 1, rangeShape: 'diamond', multiplier: 0, icon: '🏃', mpCost: 0, category: 'Utility' }, // 기본 이동 거리를 1로 설정
         'slash': { id: 'slash', name: '베기', type: 'Melee', range: 1, rangeShape: 'diamond', multiplier: 1.5, icon: '⚔️', mpCost: 5, category: 'Attack' },
         'stomp': { id: 'stomp', name: '발 구르기', type: 'Melee', range: 1, rangeShape: 'square', multiplier: 1.2, icon: '💥', mpCost: 8, category: 'Attack'},
         'crosscut': { id: 'crosscut', name: '십자 베기', type: 'Melee', range: 2, rangeShape: 'cross', multiplier: 1.0, icon: '十字', mpCost: 10, category: 'Attack'},
@@ -1032,6 +983,7 @@
     const createGameBtn = document.getElementById('create-game-btn');
     const joinGameBtn = document.getElementById('join-game-btn');
     const gameIdInput = document.getElementById('game-id-input');
+    const gameIdContainer = document.getElementById('game-id-container');
     const gameIdDisplay = document.getElementById('game-id-display');
     const copyGameIdBtn = document.getElementById('copy-game-id-btn');
     const adminModal = document.getElementById('admin-modal');
@@ -1045,112 +997,6 @@
     const userInfoBtn = document.getElementById('user-info-btn');
     const userInfoModal = document.getElementById('user-info-modal');
 
-    // NEW Music Control Elements
-    const musicControlBtn = document.getElementById('music-control-btn');
-    const musicVolumeModal = document.getElementById('music-volume-modal');
-
-
-    // --- Music Player Functions ---
-
-    // Function to extract YouTube ID from URL
-    function extractYouTubeId(url) {
-        if (!url) return null;
-        const regex = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})/;
-        const match = url.match(regex);
-        return match ? match[1] : null;
-    }
-
-    function loadPlayer(videoId, autoPlay = false) {
-        if (!window.isPlayerReady || !videoId) {
-            console.error("YouTube API not ready or no video ID.");
-            currentTrackId = videoId;
-            return;
-        }
-        
-        currentTrackId = videoId;
-        
-        if (window.ytPlayer) {
-            // Player exists, just load new video
-            window.ytPlayer.loadVideoById({
-                'videoId': videoId,
-                'startSeconds': 0,
-                'suggestedQuality': 'small'
-            });
-            updateVolume(localVolume); // Reapply user's volume
-            if (autoPlay) {
-                 window.ytPlayer.playVideo();
-            }
-            return;
-        }
-        
-        // Create new player
-        window.ytPlayer = new YT.Player('yt-player', {
-            videoId: videoId,
-            playerVars: {
-                'autoplay': autoPlay ? 1 : 0, // Start playback
-                'controls': 0,
-                'loop': 1,
-                'disablekb': 1,
-                'fs': 0,
-                'modestbranding': 1,
-                'rel': 0,
-                'showinfo': 0,
-                'iv_load_policy': 3,
-                'playlist': videoId, // For seamless looping
-                'wmode': 'transparent'
-            },
-            events: {
-                'onReady': onPlayerReady,
-                'onStateChange': onPlayerStateChange
-            }
-        });
-    }
-
-    function onPlayerReady(event) {
-        console.log("YouTube Player Ready.");
-        window.isPlayerReady = true;
-        // Apply user's local volume setting
-        updateVolume(localVolume);
-    }
-
-    function onPlayerStateChange(event) {
-        // Handle ended state to ensure looping (if playerVars.loop wasn't enough)
-        if (event.data === YT.PlayerState.ENDED) {
-            event.target.seekTo(0);
-            event.target.playVideo();
-        }
-    }
-
-    function updateVolume(newVolume) {
-        localVolume = newVolume;
-        localStorage.setItem('musicVolume', newVolume);
-        
-        const effectiveVolume = localMuted ? 0 : localVolume;
-
-        if (window.ytPlayer && window.isPlayerReady && typeof window.ytPlayer.setVolume === 'function') {
-            window.ytPlayer.setVolume(effectiveVolume);
-        }
-        
-        // Update modal UI
-        const slider = document.getElementById('music-volume-slider');
-        const volumeIconEl = document.getElementById('volume-icon');
-        
-        if (slider) slider.value = localVolume;
-        
-        if (volumeIconEl) {
-            if (localMuted || localVolume === 0) {
-                volumeIconEl.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464A6.001 6.001 0 006 12a6.001 6.001 0 009.536 3.536L20.07 20.07A1 1 0 0021 20V4a1 1 0 00-.93-.93L15.536 8.464z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.914 17.914l-6.364-6.364"></path>`; // Mute with slash
-            } else {
-                volumeIconEl.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19h12M9 19l-1 1m13-1l1 1m-4-6h.01M17 10h.01"></path>`; // Generic music icon
-            }
-        }
-    }
-
-    function toggleMute() {
-        localMuted = !localMuted;
-        localStorage.setItem('musicMuted', localMuted ? 'true' : 'false');
-        updateVolume(localVolume); // Reapply volume to update player and icon
-    }
 
     // --- Game Lobby ---
     function generateGameId() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
@@ -1186,6 +1032,7 @@
         localStorage.setItem('currentGameId', gameId);
         lobbyModal.classList.add('hidden');
         gameIdDisplay.value = gameId;
+        // gameIdContainer.classList.remove('hidden'); // REMOVED: Game ID container is removed from this flow
 
         if (isNewGame) {
             await deleteLogsCollection(gameId);
@@ -1221,8 +1068,7 @@
             round: 1, 
             maxRounds: 0, 
             isAdminMoveAllowed: true,
-            musicUrl: '',
-            musicName: ''
+            boardBackgroundImage: '' // Default empty background
         }); 
     }
     async function seedInitialCharacters(gameId) {
@@ -1262,29 +1108,13 @@
                 round = data.round || 1;
                 maxRounds = data.maxRounds || 0;
                 isAdminMoveAllowed = data.isAdminMoveAllowed !== undefined ? data.isAdminMoveAllowed : true;
+                boardBackgroundImage = data.boardBackgroundImage || ''; // NEW: Load background image URL
+                
                 const turnCharId = data.currentTurnCharId;
                 currentTurnIndex = characters.findIndex(c => c.id === turnCharId);
                 if (currentTurnIndex === -1) currentTurnIndex = 0;
                 if (!adminModal.classList.contains('hidden')) openAdminModal();
                 
-                // NEW: Music Control Update
-                const musicUrl = data.musicUrl;
-                const musicName = data.musicName || "재생 중인 트랙 없음";
-                document.getElementById('current-track-display').textContent = `현재 트랙: ${musicName}`;
-                const newTrackId = extractYouTubeId(musicUrl);
-                
-                if (newTrackId && newTrackId !== currentTrackId) {
-                     loadPlayer(newTrackId);
-                     logAction(`🎵 관리자가 배경 음악을 '${musicName}'(으)로 변경했습니다.`, "system");
-                } else if (!newTrackId && currentTrackId && window.ytPlayer) {
-                     if (typeof window.ytPlayer.stopVideo === 'function') {
-                        window.ytPlayer.stopVideo();
-                     }
-                     currentTrackId = null;
-                     logAction(`🔇 관리자가 배경 음악 재생을 중지했습니다.`, "system");
-                }
-
-
                 // NEW: Check for map features and fetch them
                 onSnapshot(doc(db, 'games', gameId, 'board', 'tiles'), (tileDoc) => {
                     boardTiles = tileDoc.data()?.tiles || {};
@@ -1388,6 +1218,8 @@
         
         await updateTurnIndex(nextIndex);
         selectedCharacterId = null;
+        // IMPORTANT: Clear UI highlights on turn change
+        document.querySelectorAll('.combat-range').forEach(cell => cell.classList.remove('combat-range', 'attack-range-move', 'attack-range-skill', 'heal-range-skill'));
     }
     
     async function previousTurn() {
@@ -1401,6 +1233,8 @@
 
         await updateTurnIndex(prevIndex, true);
         selectedCharacterId = null;
+        // IMPORTANT: Clear UI highlights on turn change
+        document.querySelectorAll('.combat-range').forEach(cell => cell.classList.remove('combat-range', 'attack-range-move', 'attack-range-skill', 'heal-range-skill'));
     }
 
     // Helper function to handle HP change
@@ -1451,6 +1285,7 @@
                     const size = char.size || 1;
                     for (let ex = 0; ex < size; ex++) {
                         for (let ey = 0; ey < size; ey++) {
+                            // Hit check: If *any* cell occupied by the character is within the affected cells
                             if (affectedCells.has(`${char.x + ex},${char.y + ey}`)) {
                                 targets.add(char);
                                 break;
@@ -1737,11 +1572,14 @@
     }
 
     function highlightRange(char, skillId) {
+        // IMPORTANT: Clear previous highlights immediately before calculating new ones
         document.querySelectorAll('.combat-range').forEach(cell => cell.classList.remove('combat-range', 'attack-range-move', 'attack-range-skill', 'heal-range-skill'));
+        
         if (!char || char.x === null || !SKILLS[skillId]) return;
 
         const skill = SKILLS[skillId];
-        const range = skill.range;
+        // If it's the default 'move' skill, use the character's custom moveRange if available
+        const range = (skill.id === 'move' && char.moveRange !== undefined) ? char.moveRange : skill.range;
         const size = char.size || 1;
         
         const isMove = skill.category === 'Utility'; // Check category for utility skills
@@ -1761,13 +1599,34 @@
                     const cellKey = `${targetX},${targetY}`;
 
                     if (targetX >= 0 && targetX < BOARD_SIZE && targetY >= 0 && targetY < BOARD_SIZE) {
-                        if (canPlaceCharacter(char, targetX, targetY)) {
+                        // Check if the current move target cell(s) is clear
+                        let isClear = true;
+                        for (let cx = targetX; cx < targetX + size; cx++) {
+                            for (let cy = targetY; cy < targetY + size; cy++) {
+                                // Important: If we are checking the character's *current* position, it should always be considered clear for the purposes of drawing the valid range.
+                                if (cx >= char.x && cx < char.x + size && cy >= char.y && cy < char.y + size) {
+                                    continue; // Skip checking self-occupied cells against other tokens/obstacles
+                                }
+                                
+                                if (isCellOccupied(cx, cy, char.id)) {
+                                    isClear = false;
+                                    break;
+                                }
+                            }
+                            if (!isClear) break;
+                        }
+
+                        if (isClear) {
                             validCells.add(cellKey);
                         } else {
                             invalidMoveCells.add(cellKey);
                         }
                     }
                 }
+            }
+            // Add the character's current position to the valid moveset (for zero-move click)
+            for (let ex = 0; ex < size; ex++) for (let ey = 0; ey < size; ey++) {
+                validCells.add(`${char.x + ex},${char.y + ey}`);
             }
         } else if (isAttack || isHealOrSupport) {
              // Action range
@@ -2074,6 +1933,14 @@
             }
         });
 
+        // Set board background image
+        if (boardBackgroundImage) {
+            gameBoard.style.backgroundImage = `url('${boardBackgroundImage}')`;
+        } else {
+            gameBoard.style.backgroundImage = 'none';
+        }
+        document.querySelectorAll('.character-token').forEach(t => t.classList.remove('current-turn-glow'));
+        
         const currentTurnChar = characters.length > 0 ? characters[currentTurnIndex] : null;
         updateAuthStatus();
 
@@ -2104,6 +1971,9 @@
                 
                 // --- Turn Marker Insertion (for skipping move) ---
                 if (gameState === 'STARTED' && currentTurnChar && char.id === currentTurnChar.id && char.hp > 0) {
+                     // NEW: Apply glow to token itself
+                     token.classList.add('current-turn-glow');
+
                      const marker = document.createElement('div');
                      marker.className = 'turn-marker';
                      marker.innerHTML = '▼';
@@ -2116,8 +1986,8 @@
                              selectedCharacterId = charId; // Ensure selected
                              turnPhase = 'ACTION'; // Skip move phase
                              selectedSkill = null;
-                             preMovePosition = { x: char.x, y: char.y };
-                             logAction(`⏩ ${char.name}이(가) 이동 단계를 건너뛰었습니다.`, "system");
+                             preMovePosition = { x: currentTurnChar.x, y: currentTurnChar.y }; // Use current position for 0-move
+                             logAction(`⏩ ${currentTurnChar.name}이(가) 이동 단계를 건너뛰었습니다. (제자리 이동)`, "system");
                              render();
                          }
                      };
@@ -2205,7 +2075,7 @@
             
             const currentMoveRange = character.moveRange !== undefined 
                 ? character.moveRange 
-                : SKILLS['move']?.range || 2;
+                : SKILLS['move']?.range || 1; // Default to 1
             
             contentContainer.innerHTML = `<div class="profile-modal-container rounded-lg ${isEnemy ? 'enemy-profile' : ''}" style="grid-template-columns: 1fr;">
                 <div class="p-6">
@@ -2224,6 +2094,7 @@
                         </div>
                         <h4 class="text-lg font-bold text-gray-300 pt-4">스킬 선택</h4>
                         <div class="grid grid-cols-3 gap-4">${skillSelects}</div>
+                        <!-- NEW: Move Range Adjustment (only visible if the character has the default 'move' skill) -->
                         ${character.skills.includes('move') ? 
                             `
                             <h4 class="text-lg font-bold text-gray-300 pt-4 border-t border-gray-700/50">행동력 조정</h4>
@@ -2265,7 +2136,7 @@
 
                 // NEW: Update 'move' skill range for this specific character if changed.
                 if (character.skills.includes('move')) {
-                    const newMoveRange = parseInt(document.getElementById('edit-move-range').value) || 2;
+                    const newMoveRange = parseInt(document.getElementById('edit-move-range').value) || 1;
                     updates.moveRange = newMoveRange;
                 }
                 
@@ -2296,7 +2167,7 @@
             // Get effective move range (check if moveRange is set on character, otherwise fall back to global move skill range)
             const effectiveMoveRange = character.moveRange !== undefined 
                 ? character.moveRange 
-                : SKILLS['move']?.range || 2;
+                : SKILLS['move']?.range || 1;
 
 
             contentContainer.innerHTML = `<div class="profile-modal-container rounded-lg ${isEnemy ? 'enemy-profile' : ''}">
@@ -2377,7 +2248,7 @@
             batch.update(charRef, { x: null, y: null });
         });
         await batch.commit();
-        await logAction("🔄 관리자가 모든 캐릭터를 미배치 상태로 되돌렸습니다.", "admin");
+        await logAction(`🔄 관리자가 모든 캐릭터를 미배치 상태로 되돌렸습니다.`, "admin");
         selectedCharacterId = null;
         render();
     }
@@ -2388,7 +2259,7 @@
         await seedInitialCharacters(gameId);
         await setDoc(doc(db, 'games', gameId, 'board', 'tiles'), { tiles: {} });
         await setDoc(doc(db, 'games', gameId), { gameState: 'PREPARATION', currentTurnIndex: 0, currentTurnCharId: null, round: 1 }, { merge: true });
-        await logAction("⚠️ 관리자가 전체 게임을 초기화했습니다. 캐릭터 목록과 맵이 기본 상태로 복원됩니다.", "admin");
+        await logAction(`⚠️ 관리자가 전체 게임을 초기화했습니다. 캐릭터 목록과 맵이 기본 상태로 복원됩니다.`, "admin");
     }
 
     // --- Map Edit Close Functions (Refactored) ---
@@ -2397,7 +2268,7 @@
     function confirmExitMapEditMode() {
         isMapEditMode = false; // Mode OFF
         closeModal('map-edit-modal');
-        logAction("🗺️ 관리자가 맵 편집 모드를 종료했습니다.", "admin");
+        logAction(`🗺️ 관리자가 맵 편집 모드를 종료했습니다.`, "admin");
         updateAuthStatus();
     }
 
@@ -2438,6 +2309,15 @@
         await setDoc(doc(db, 'games', gameId, 'board', 'tiles'), { tiles: newTiles });
         await logAction(`🗺️ 관리자가 (${x}, ${y}) 칸을 ${type === 'obstacle' ? '장애물(🚫)' : (type === 'damage' ? '대미지 칸(🩸)' : '일반 칸')}으로 설정했습니다.`, "admin");
     }
+    
+    // NEW: Save Background Image
+    async function saveBoardBackground(url) {
+        if (!gameId) return;
+        await setDoc(doc(db, 'games', gameId), { boardBackgroundImage: url }, { merge: true });
+        boardBackgroundImage = url;
+        await logAction(`🖼️ 관리자가 보드 배경을 설정했습니다.`, "admin");
+    }
+
 
     function openAdminModal() {
         if (!gameId) return;
@@ -2458,15 +2338,6 @@
                 <button id="prev-turn-btn" class="w-full bg-gray-600 p-2">이전 턴으로</button>
                 <button id="next-turn-btn" class="w-full bg-gray-600 p-2">다음 턴으로</button>
             </div>
-            
-            <div class="mt-6 p-3 border border-gray-600 rounded-md">
-                <h5 class="text-sm font-bold text-indigo-400 mb-2">배경 음악 설정</h5>
-                <input type="text" id="admin-music-url-input" placeholder="유튜브 URL 또는 ID" class="form-input mb-2" value="">
-                <input type="text" id="admin-music-name-input" placeholder="트랙 이름 (선택 사항)" class="form-input mb-2" value="">
-                <button id="set-music-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 p-2">배경 음악 적용 / 업데이트</button>
-                <button id="stop-music-btn" class="w-full mt-2 bg-red-600 hover:bg-red-700 p-2">배경 음악 중지</button>
-            </div>
-
             <div class="mt-4 grid grid-cols-2 gap-4">
                 <button id="reset-board-pos-btn" class="w-full bg-red-700 p-2">보드 초기화 (미배치)</button>
                 <button id="reset-all-game-btn" class="w-full bg-red-900 p-2">⚠️ 전체 게임 재시작</button>
@@ -2486,8 +2357,16 @@
         
         // Map Edit Toggle
         container.innerHTML += `<div class="mb-8 p-4 border border-gray-700 rounded-md">
-            <h4 class="font-bold text-lg mb-4 text-yellow-400">맵/지형 관리</h4>
+            <h4 class="font-bold text-lg mb-4 text-yellow-400">맵/지형 및 배경 관리</h4>
             <button id="open-map-edit-btn" class="w-full bg-purple-600 p-2 font-bold ${gameState !== 'PREPARATION' ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState !== 'PREPARATION' ? 'disabled' : ''}>맵 편집 모드 ${isMapEditMode ? '종료' : '시작'}</button>
+            
+            <div class="mt-4 pt-4 border-t border-gray-700/50">
+                <label for="board-bg-url" class="block text-sm font-medium text-gray-300">게임 보드 배경 URL</label>
+                <div class="flex gap-2 mt-1">
+                    <input type="text" id="board-bg-url" class="form-input flex-grow" placeholder="이미지 URL" value="${boardBackgroundImage}">
+                    <button id="save-board-bg-btn" class="bg-indigo-600 p-2 px-4">적용</button>
+                </div>
+            </div>
         </div>`;
 
 
@@ -2595,47 +2474,17 @@
 
         document.getElementById('close-admin-modal-btn').onclick = () => closeModal('admin-modal');
 
-        // Set Admin Music Inputs with current values
-        const gameDocRef = doc(db, 'games', gameId);
-        getDoc(gameDocRef).then(docSnap => {
-             if (docSnap.exists()) {
-                 const data = docSnap.data();
-                 document.getElementById('admin-music-url-input').value = data.musicUrl || '';
-                 document.getElementById('admin-music-name-input').value = data.musicName || '';
-             }
-        });
-
-
-        document.getElementById('set-music-btn').onclick = async () => {
-            const url = document.getElementById('admin-music-url-input').value.trim();
-            const name = document.getElementById('admin-music-name-input').value.trim() || '지정된 트랙';
-            if (url && gameId) {
-                await updateDoc(doc(db, 'games', gameId), { musicUrl: url, musicName: name });
-                showCustomModal("음악 적용", `배경 음악을 '${name}'으로 설정했습니다.`, [{text: "확인", class: "bg-green-600"}]);
-            } else {
-                 showCustomModal("오류", "유튜브 URL을 입력해주세요.", [{text: "확인", class: "bg-red-600"}]);
-            }
-        };
-        
-        document.getElementById('stop-music-btn').onclick = async () => {
-            if (gameId) {
-                await updateDoc(doc(db, 'games', gameId), { musicUrl: '', musicName: '' });
-                showCustomModal("음악 중지", "배경 음악 재생을 중지했습니다.", [{text: "확인", class: "bg-green-600"}]);
-            }
-        };
-
-
         document.getElementById('set-prep-phase-btn').onclick = async () => {
             if (gameId) {
                 await updateDoc(doc(db, 'games', gameId), { gameState: 'PREPARATION', currentTurnIndex: 0, currentTurnCharId: null, round: 1 });
-                await logAction("🛠️ 관리자가 게임을 준비 단계로 설정했습니다.", "system");
+                await logAction(`🛠️ 관리자가 게임을 준비 단계로 설정했습니다.`, "system");
                 showCustomModal("상태 변경", "게임이 준비 단계로 설정되었습니다. 자유롭게 토큰을 배치하세요.", [{text: "확인", class: "bg-blue-600"}]);
             }
         };
         document.getElementById('set-start-phase-btn').onclick = async () => {
             if (gameId) {
                 await updateDoc(doc(db, 'games', gameId), { gameState: 'STARTED' });
-                await logAction("⚔️ 게임이 시작되었습니다! 첫 번째 턴부터 진행합니다.", "system");
+                await logAction(`⚔️ 게임이 시작되었습니다! 첫 번째 턴부터 진행합니다.`, "system");
                 showCustomModal("게임 시작", "전투를 시작합니다!", [{text: "확인", class: "bg-green-600"}]);
             }
         };
@@ -2657,6 +2506,12 @@
         };
 
         document.getElementById('open-map-edit-btn').onclick = openMapEditModal;
+        
+        // NEW: Background Image Save Listener
+        document.getElementById('save-board-bg-btn').onclick = () => {
+            const url = document.getElementById('board-bg-url').value.trim();
+            saveBoardBackground(url);
+        };
 
 
         document.getElementById('admin-move-toggle').onchange = async (e) => {
@@ -2828,7 +2683,8 @@
 
     async function handleCombatClick(e) {
         const token = e.target.closest('.character-token');
-        const cell = e.target.closest('.cell');
+        // IMPORTANT: Always use the cell for coordinates and targeting logic
+        const cell = e.target.closest('.cell'); 
         if (!cell) return;
         
         const selectedCharacter = characters.find(c => c.id === selectedCharacterId);
@@ -2836,43 +2692,53 @@
         
         const isControllable = selectedCharacter && canControlCharacter(selectedCharacter.id);
         
-        if (token) {
-            const clickedCharId = token.dataset.charId;
-            const clickedChar = characters.find(c => c.id === clickedCharId);
-            
-            if (e.detail === 2) {
-                openProfileModal(clickedChar);
-                return;
-            }
+        const clickedCharId = token ? token.dataset.charId : null;
+        const clickedChar = characters.find(c => c.id === clickedCharId);
 
-            if (currentTurnChar?.id === clickedCharId && (isAdmin || loggedInCharId === clickedCharId)) {
-                selectedCharacterId = clickedCharId;
-                // NEW: If already selected and in MOVE phase, treat a click on self as skipping move.
-                if (selectedCharacterId === clickedCharId && turnPhase === 'MOVE') {
-                    const cellX = parseInt(cell.dataset.x);
-                    const cellY = parseInt(cell.dataset.y);
-                    // Check if the click is on the character's current cell(s)
-                    const isClickOnSelf = cellX >= clickedChar.x && cellX < (clickedChar.x + (clickedChar.size || 1)) &&
-                                          cellY >= clickedChar.y && cellY < (clickedChar.y + (clickedChar.size || 1));
-                    
-                    if (isClickOnSelf) {
-                        turnPhase = 'ACTION'; // Skip move phase
-                        selectedSkill = null;
-                        preMovePosition = { x: clickedChar.x, y: clickedChar.y };
-                        logAction(`⏩ ${clickedChar.name}이(가) 제자리 이동으로 단계를 건너뛰었습니다.`, "system");
-                        render();
-                        return;
-                    }
-                }
-                
-                selectedSkill = 'move';
-                preMovePosition = { x: clickedChar.x, y: char.y };
-                render();
-                return;
-            }
+        if (e.detail === 2 && clickedChar) {
+            openProfileModal(clickedChar);
+            return;
         }
         
+        // Phase 1: Selection/Start Move
+        if (clickedCharId && currentTurnChar?.id === clickedCharId && (isAdmin || loggedInCharId === clickedCharId)) {
+            selectedCharacterId = clickedCharId;
+            
+            // Check if the click occurred on the 'turn-marker' or if it's a re-click of the token while in MOVE phase
+            if (turnPhase === 'MOVE') {
+                const cellX = parseInt(cell.dataset.x);
+                const cellY = parseInt(cell.dataset.y);
+                
+                // Determine if the click was directly on the marker (which is attached to the token)
+                const isClickOnMarker = e.target.closest('.turn-marker'); 
+                
+                // Check if the click is on the character's current cell(s)
+                const isClickOnSelfCell = cellX >= clickedChar.x && cellX < (clickedChar.x + (clickedChar.size || 1)) &&
+                                          cellY >= clickedChar.y && cellY < (clickedChar.y + (clickedChar.size || 1));
+                
+                // If marker is clicked OR if token/cell is clicked while MOVE range is active (meaning it's a zero-move intent or skip)
+                if (isClickOnMarker || (isClickOnSelfCell && selectedCharacterId === clickedCharId)) {
+                    // **Zero Movement (to skip move) / Go to ACTION phase**
+                    turnPhase = 'ACTION'; 
+                    selectedSkill = null;
+                    preMovePosition = { x: clickedChar.x, y: clickedChar.y }; 
+                    logAction(`⏩ ${clickedChar.name}이(가) 제자리 이동으로 단계를 건너뛰었습니다.`, "system");
+                    render();
+                    return;
+                }
+            }
+            
+            // If it wasn't a skip, then it's a selection/re-selection:
+            turnPhase = 'MOVE';
+            selectedSkill = 'move';
+            preMovePosition = { x: clickedChar.x, y: clickedChar.y };
+            render();
+            return;
+        }
+
+        // --- Clicks when a controllable character is ALREADY selected ---
         if (!isControllable) { 
+             // If not controllable, clear selection unless it's a double click for info
              selectedCharacterId = null; 
              selectedSkill = null; 
              render(); 
@@ -2880,10 +2746,6 @@
         }
 
         if (turnPhase === 'MOVE') {
-            if (token && token.dataset.charId === selectedCharacterId) { 
-                // Handled above or by marker click
-            } 
-            
             const newX = parseInt(cell.dataset.x), newY = parseInt(cell.dataset.y);
             const tileType = boardTiles[`${newX},${newY}`]?.type;
 
@@ -2892,21 +2754,34 @@
                 return;
             }
 
-            // Use 'attack-range-move' class which covers all valid moves (including utility moves)
-            if (canPlaceCharacter(selectedCharacter, newX, newY) && cell.classList.contains('attack-range-move')) {
+            // Move Execution
+            // Check if the target cell is actually highlighted as a valid move (using the CSS class)
+            if (cell.classList.contains('attack-range-move')) {
+                // Determine if this is a zero-move (clicking on the exact original position)
+                const isZeroMove = selectedCharacter.x === newX && selectedCharacter.y === newY;
+
                 await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacter.id), { x: newX, y: newY });
                 
-                if (isAdmin) {
+                if (isZeroMove) {
+                     logAction(`⏩ ${selectedCharacter.name}이(가) 제자리 이동했습니다.`, "move");
+                } else if (isAdmin) {
                     await logAction(`👮 관리자가 ${selectedCharacter.name}을(를) (${selectedCharacter.x},${selectedCharacter.y})에서 (${newX}, ${newY})로 이동했습니다.`, "admin-move");
                 } else {
                     await logAction(`🏃 ${selectedCharacter.name}이(가) (${newX}, ${newY})(으)로 이동했습니다.`, "move");
                 }
                 
-                turnPhase = 'ACTION'; selectedSkill = null; render();
+                // Transition to ACTION phase after successful movement (even zero-move)
+                turnPhase = 'ACTION'; 
+                selectedSkill = null; // Clear selected skill to force user to choose an action
+                render();
             }
         } else if (turnPhase === 'ACTION') {
             const skill = SKILLS[selectedSkill];
-            if (!skill) return;
+            if (!skill) {
+                // If in ACTION phase but no skill is selected, prompt user to select skill
+                showCustomModal("행동 필요", "사용할 스킬을 선택해 주세요.", [{ text: "확인", class: "bg-yellow-600" }]);
+                return;
+            }
 
             const isAttackSkill = skill.category === 'Attack';
             const isHealOrSupport = skill.category === 'Heal' || skill.category === 'Support';
@@ -2923,10 +2798,11 @@
                     if (cell.classList.contains('attack-range-skill')) {
                         await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
                     }
-                } else if (token) {
-                    const targetChar = characters.find(c => c.id === token.dataset.charId);
+                } else if (clickedChar) {
+                    const targetChar = clickedChar;
                     // Standard Attack: Target must be enemy (type check) and in range (class check)
-                    if (targetChar && selectedCharacter.type !== targetChar.type && cell.classList.contains('attack-range-skill')) {
+                    // The findTargetsInAoe logic is used in highlightRange which checks if the cell is in range. We rely on the class check.
+                    if (selectedCharacter.type !== targetChar.type && cell.classList.contains('attack-range-skill')) {
                         await executeSkill(selectedCharacter, targetChar, selectedSkill);
                     }
                 }
@@ -2942,18 +2818,18 @@
                     if (cell.classList.contains('heal-range-skill')) {
                         await executeSkill(selectedCharacter, { x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y) }, selectedSkill);
                     }
-                } else if (token) {
-                    const targetChar = characters.find(c => c.id === token.dataset.charId);
+                } else if (clickedChar) {
+                    const targetChar = clickedChar;
                     
                     let isValidTarget = false;
                     if (skill.targetType === 'ALLY_DEAD') {
                         // Resurrect: Target must be dead ally
-                        if (targetChar && selectedCharacter.type === targetChar.type && targetChar.hp <= 0 && cell.classList.contains('heal-range-skill')) {
+                        if (selectedCharacter.type === targetChar.type && targetChar.hp <= 0 && cell.classList.contains('heal-range-skill')) {
                             isValidTarget = true;
                         }
                     } else if (skill.targetType === 'ALLY') {
                         // Heal/Support: Target must be live ally
-                         if (targetChar && selectedCharacter.type === targetChar.type && targetChar.hp > 0 && cell.classList.contains('heal-range-skill')) {
+                         if (selectedCharacter.type === targetChar.type && targetChar.hp > 0 && cell.classList.contains('heal-range-skill')) {
                             isValidTarget = true;
                         }
                     }
