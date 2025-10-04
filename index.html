@@ -28,7 +28,7 @@
             --log-system: #FBBF24;
             --log-join: #4ADE80;
             --log-admin: #9333ea;
-            --turn-highlight-color: #FBBF24;
+            --turn-highlight-color: #caa954;
             --bg-game-id: #1f2937;
             --bg-selection-overlay: linear-gradient(180deg, var(--bg-primary) 0%, rgba(36, 36, 36, 0.7) 100%);
             --mp-color: #3B82F6;
@@ -124,6 +124,11 @@
             background-color: var(--bg-primary);
             color: var(--text-primary);
             transition: background-color 0.3s, color 0.3s;
+            background-image: var(--page-background-image); /* JS에서 제어할 변수 */
+            background-size: cover; /* 화면 전체를 덮도록 설정 */
+            background-position: center; /* 이미지를 중앙에 위치 */
+            background-repeat: no-repeat; /* 이미지가 반복되지 않도록 설정 */
+            background-attachment: fixed; /* 스크롤해도 배경은 고정 */
         }
         
         body, h1, h2, h3, h4, button, .font-title {
@@ -204,9 +209,18 @@
         }
 
         @keyframes turn-glow {
-            0% { box-shadow: 0 0 5px var(--turn-highlight-color), 0 0 10px var(--turn-highlight-color) inset; }
-            50% { box-shadow: 0 0 15px var(--turn-highlight-color), 0 0 20px var(--turn-highlight-color) inset; }
-            100% { box-shadow: 0 0 5px var(--turn-highlight-color), 0 0 10px var(--turn-highlight-color) inset; }
+            0% { 
+                /* 변경: inset 제거 및 box-shadow 값 수정 */
+                box-shadow: 0 0 8px 2px var(--turn-highlight-color); 
+            }
+            50% { 
+                /* 변경: inset 제거 및 box-shadow 값 수정 */
+                box-shadow: 0 0 16px 5px var(--turn-highlight-color); 
+            }
+            100% { 
+                /* 변경: inset 제거 및 box-shadow 값 수정 */
+                box-shadow: 0 0 8px 2px var(--turn-highlight-color); 
+            }
         }
 
         .character-token {
@@ -228,10 +242,26 @@
         }
 
         .character-token.current-turn-glow { /* NEW Class for Token Glow */
-            box-shadow: 0 0 10px rgba(0,0,0,0.5), 0 0 8px var(--turn-highlight-color);
+            /* 기존 box-shadow와 animation 속성을 제거합니다. */
+            /* 이 클래스는 이제 :before 가상 요소를 만들기 위한 식별자로만 사용됩니다. */
+            border-color: var(--turn-highlight-color); /* 테두리 색상 강조는 유지할 수 있습니다. */
+        }
+        /* NEW: Glow effect moved to a pseudo-element to appear behind the token */
+        .character-token.current-turn-glow::before {
+            content: ''; /* 가상 요소 생성을 위해 필수 */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%; /* 부모 토큰과 똑같은 원형 */
+            
+            /* z-index를 -1로 주어 토큰 이미지(부모)보다 뒤에 위치시킴 */
+            z-index: -1; 
+            
+            /* 1단계에서 수정한 애니메이션을 여기에 적용 */
             animation: turn-glow 3s infinite ease-in-out;
         }
-        
         .character-token.enemy-token {
             border-color: #ef4444;
         }
@@ -300,7 +330,7 @@
             /* Position adjusted slightly to the left */
             position: absolute;
             top: -1.5rem; /* Reduced distance */
-            left: 40%; /* Moved from 45% for more left shift */
+            left: 50%; /* Moved from 45% for more left shift */
             transform: translateX(-50%);
             color: var(--turn-highlight-color);
             font-size: 1.5rem; /* Reduced size */
@@ -611,8 +641,13 @@
         .skill-btn {
             border-radius: 9999px; /* Pill shape */
             padding: 0.5rem 1rem;
-            border: 1px solid var(--border-secondary);
             transition: all 0.3s ease;
+
+            /* --- 아래 4줄을 추가/수정하세요 --- */
+            background-color: transparent; 
+            color: var(--bg-primary); /* 텍스트 색상을 배경과 대비되게 변경 */
+            font-weight: bold; /* 텍스트를 굵게 */
+            border: 1px solid var(--accent-primary);
         }
         
         .skill-btn:not([disabled]):hover {
@@ -697,11 +732,140 @@
         #enemy-count.summary-count {
             background-image: linear-gradient(180deg, var(--gradient-start), var(--enemy-color));
         }
+       /* --- 아래 코드로 기존 턴 알림 CSS를 모두 교체해주세요 --- */
+
+        /* NEW: 화면을 어둡게 만드는 백드롭 스타일 */
+        #turn-announcement-backdrop {
+            display: none; /* 평소에는 숨김 */
+            position: fixed;
+            inset: 0; /* top, right, bottom, left를 모두 0으로 설정 */
+            background-color: rgba(0, 0, 0, 0.75);
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            z-index: 100; /* 텍스트 바로 아래에 위치 */
+            pointer-events: none; /* 클릭 방지 */
+        }
+
+        #turn-announcement-backdrop.visible {
+            display: block;
+            opacity: 1;
+        }
+
+        /* UPDATED: Turn Announcement Banner Styles */
+        #turn-announcement {
+            display: none;
+            position: fixed;
+            top: 45%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 101; /* 백드롭 위에 위치 */
+            
+            color: var(--turn-highlight-color); 
+            font-family: 'Cinzel', serif;
+            font-weight: bold;
+            text-align: center;
+            white-space: nowrap;
+
+            text-shadow: 
+                -2px -2px 0 #000,  
+                 2px -2px 0 #000,
+                -2px  2px 0 #000,
+                 2px  2px 0 #000,
+                 0 0 15px rgba(0,0,0,0.8);
+        }
+
+        /* NEW: 텍스트 포맷을 위한 스타일 */
+        #turn-announcement .round-text {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: normal;
+            opacity: 0.8;
+            margin-bottom: 0.5rem;
+            letter-spacing: 1px; /* 자간 추가 */
+        }
+
+        #turn-announcement .turn-text {
+            display: block;
+            font-size: 3.5rem;
+        }
+
+        /* Class to trigger the animation */
+        #turn-announcement.animate-turn {
+            display: block;
+            animation: turn-announce-animation 4s ease-in-out forwards;
+        }
+ /* --- 이동 취소 & 턴 종료 버튼 스타일 --- */
+
+        #undo-move-btn, #end-turn-btn {
+            color: white;
+            border: none;
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            font-weight: bold;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #undo-move-btn:hover, #end-turn-btn:hover {
+            transform: translateY(-2px); /* 살짝 떠오르는 효과 */
+            filter: brightness(1.15); /* 더 밝아지는 효과 */
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        /* 이동 취소 버튼 - 회색 계열 그라데이션 */
+        #undo-move-btn {
+            background-image: linear-gradient(to top, #4b5563, #6b7280);
+            color: var(--text-primary);
+        }
+
+        /* 턴 종료 버튼 - 테마 색상(금색) 계열 그라데이션 */
+        #end-turn-btn {
+            background-image: linear-gradient(to top, var(--accent-secondary), var(--turn-highlight-color));
+            color: var(--bg-primary); /* 밝은 배경에 어두운 글씨로 가독성 확보 */
+        }
+        /* UPDATED: Keyframes for the announcement animation */
+        @keyframes turn-announce-animation {
+            0% {
+                transform: translateX(-150vw);
+                opacity: 0;
+            }
+            15% {
+                transform: translateX(-50%);
+                opacity: 1;
+            }
+            45% {
+                transform: translateX(-50%);
+                opacity: 1;
+                /* 기존 그림자 유지 */
+                text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 15px rgba(0,0,0,0.8);
+            }
+            50% {
+                /* 변경됨: 텍스트와 같은 색으로 은은하게 빛나는 효과 */
+                text-shadow: 
+                    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+                    0 0 10px var(--turn-highlight-color); /* <-- 이 부분이 은은한 빛 효과 */
+            }
+            55% {
+                /* 다시 기존 그림자로 복귀 */
+                transform: translateX(-50%);
+                opacity: 1;
+                text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 15px rgba(0,0,0,0.8);
+            }
+            85% {
+                transform: translateX(-50%);
+                opacity: 1;
+            }
+            100% {
+                transform: translateX(150vw);
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-4 overflow-x-hidden pt-60">
 
     <!-- NEW: Utility Control Group (Bottom Right) -->
+    <div id="turn-announcement-backdrop"></div> <div id="turn-announcement"></div>
     <div id="utility-controls">
         <button id="user-info-btn" class="info-button p-3 rounded-full transition-transform hover:scale-110">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -930,6 +1094,7 @@
     let unsubscribeChars = null;
     let unsubscribeSettings = null;
     let unsubscribeLogs = null;
+    let previousTurnCharId = null; // <-- 이 줄을 추가하세요
     let isBoardInitialized = false; 
     let selectedSkill = null; 
     let currentTurnIndex = 0;
@@ -950,6 +1115,7 @@
     let isMapEditMode = false; // Flag for admin map editing
     let currentTileType = 'normal'; // The tile type the admin is currently placing
     let boardBackgroundImage = ''; // NEW: Background image URL
+    let pageBackgroundImage = ''; // <-- 이 줄을 추가하세요
     const DAMAGE_TILE_DAMAGE = 10;
     const MP_REGEN_PER_TURN = 10; // New: Mana regeneration per turn
 
@@ -1068,7 +1234,8 @@
             round: 1, 
             maxRounds: 0, 
             isAdminMoveAllowed: true,
-            boardBackgroundImage: '' // Default empty background
+            boardBackgroundImage: '', // Default empty background
+            pageBackgroundImage: ''
         }); 
     }
     async function seedInitialCharacters(gameId) {
@@ -1077,17 +1244,17 @@
         if (snapshot.empty) {
             const batch = writeBatch(db);
             const pcData = [ 
-                { name: "Shadow Assassin", img: "https://cdn.pixabay.com/photo/2023/12/15/21/47/cat-8451431_1280.jpg", type: 'PC', size: 1, skills: ['slash', 'shoot', 'heal', 'hp_transfer'], order: 1 }, // Added hp_transfer
-                { name: "Steel Guardian", img: "https://cdn.pixabay.com/photo/2023/12/15/21/47/cat-8451431_1280.jpg", type: 'PC', size: 1, skills: ['crosscut', 'resurrect', 'mp_transfer'], order: 3 }, // Added resurrect, mp_transfer
+                { name: "User1", img: "", type: 'PC', size: 1, skills: ['slash', 'shoot', 'heal', 'hp_transfer'], order: 1 }, // Added hp_transfer
+                { name: "User2", img: "", type: 'PC', size: 1, skills: ['crosscut', 'resurrect', 'mp_transfer'], order: 3 }, // Added resurrect, mp_transfer
             ];
             const enemyData = [ 
-                { name: "Dark Knight", img: "https://cdn.pixabay.com/photo/2015/05/22/05/52/cat-778315_1280.jpg", type: 'ENEMY', size: 1, skills: ['slash'], order: 2 }, 
-                { name: "Abyssal Golem", img: "https://cdn.pixabay.com/photo/2015/05/22/05/52/cat-778315_1280.jpg", type: 'ENEMY', size: 2, skills: ['stomp'], order: 4 }, 
+                { name: "Enemy1", img: "", type: 'ENEMY', size: 1, skills: ['slash'], order: 2 }, 
+                { name: "Enemy2", img: "", type: 'ENEMY', size: 2, skills: ['stomp'], order: 4 }, 
             ];
             [...pcData, ...enemyData].forEach(char => {
                 const charPassword = char.type === 'PC' ? DEFAULT_PC_PASSWORD : ''; 
                 // ADDED MP stats
-                const newChar = { name: char.name, imageUrl: char.img || '', type: char.type, size: char.size, hp: 100, maxHp: 100, mp: 50, maxMp: 50, minAttack: 12, maxAttack: 18, minDefense: 3, maxDefense: 7, x: null, y: null, skills: char.skills || [], turnOrder: char.order, password: charPassword };
+                const newChar = { name: char.name, imageUrl: char.img || '', type: char.type, size: char.size, hp: 100, maxHp: 100, mp: 50, maxMp: 50, minAttack: 12, maxAttack: 18, minDefense: 3, maxDefense: 7, x: null, y: null, skills: char.skills || [], turnOrder: char.order, password: charPassword, isAuto: false };
                 batch.set(doc(charCollectionRef), newChar);
             });
             await batch.commit();
@@ -1108,14 +1275,35 @@
                 round = data.round || 1;
                 maxRounds = data.maxRounds || 0;
                 isAdminMoveAllowed = data.isAdminMoveAllowed !== undefined ? data.isAdminMoveAllowed : true;
-                boardBackgroundImage = data.boardBackgroundImage || ''; // NEW: Load background image URL
-                
+                boardBackgroundImage = data.boardBackgroundImage || '';
+                pageBackgroundImage = data.pageBackgroundImage || '';
+                document.body.style.setProperty('--page-background-image', pageBackgroundImage ? `url('${pageBackgroundImage}')` : 'none');
+
+
                 const turnCharId = data.currentTurnCharId;
+
+                // --- 여기가 핵심 로직입니다 ---
+                // 만약 턴이 실제로 변경되었다면 (그리고 게임이 시작된 상태라면)
+                if (gameState === 'STARTED' && turnCharId && turnCharId !== previousTurnCharId) {
+                    const currentTurnChar = characters.find(c => c.id === turnCharId);
+                    if (currentTurnChar) {
+                        showTurnAnnouncement(currentTurnChar.name, round);
+                              if (currentTurnChar.isAuto) {
+                            // AI 턴 실행 (1초 후)
+                            setTimeout(() => {
+                                runAutoTurn(currentTurnChar);
+                            }, 1000);
+                        }
+                    }
+                }
+                // 현재 턴 ID를 "이전 턴 ID"로 기억
+                previousTurnCharId = turnCharId;
+                // ---------------------------------
+
                 currentTurnIndex = characters.findIndex(c => c.id === turnCharId);
                 if (currentTurnIndex === -1) currentTurnIndex = 0;
                 if (!adminModal.classList.contains('hidden')) openAdminModal();
                 
-                // NEW: Check for map features and fetch them
                 onSnapshot(doc(db, 'games', gameId, 'board', 'tiles'), (tileDoc) => {
                     boardTiles = tileDoc.data()?.tiles || {};
                     render();
@@ -1142,9 +1330,39 @@
         });
     }
     
-    // --- Game Logic ---
+   // --- Game Logic ---
     async function logAction(message, type = "system") { if (gameId) await addDoc(collection(db, "games", gameId, "logs"), { message, type, timestamp: serverTimestamp() }); }
     
+// NEW & IMPROVED: Function to show the turn announcement banner
+    // NEW & IMPROVED: Function to show the turn announcement banner
+    function showTurnAnnouncement(characterName, round) {
+        const announcementEl = document.getElementById('turn-announcement');
+        const backdropEl = document.getElementById('turn-announcement-backdrop'); // 백드롭 요소 가져오기
+        if (!announcementEl || !backdropEl) return;
+
+        // 알림 내용 설정 (두 줄 형식으로 변경)
+        announcementEl.innerHTML = `
+            <span class="round-text">Round ${round}</span>
+            <span class="turn-text">${characterName}의 턴입니다</span>
+        `;
+
+        // 애니메이션 재시작을 위해 기존 클래스 제거
+        announcementEl.classList.remove('animate-turn');
+        backdropEl.classList.remove('visible');
+
+        // 브라우저가 변경사항을 인지하도록 강제 리플로우(reflow) 실행
+        void announcementEl.offsetWidth;
+
+        // 애니메이션 및 백드롭 표시 클래스를 다시 추가하여 실행
+        announcementEl.classList.add('animate-turn');
+        backdropEl.classList.add('visible'); // 백드롭 보이기
+
+        // 애니메이션이 끝나면 클래스를 제거하여 초기 상태로 되돌림
+        announcementEl.addEventListener('animationend', () => {
+            announcementEl.classList.remove('animate-turn');
+            backdropEl.classList.remove('visible'); // 백드롭 숨기기
+        }, { once: true });
+    }
     // NEW: Function to check for damage tile and apply damage if necessary
     async function checkAndApplyTileDamage(char) {
         if (char.x === null || char.hp <= 0) return;
@@ -1164,6 +1382,136 @@
         }
     }
 
+    // 두 지점 사이의 거리를 계산하는 도우미 함수
+    function getDistance(pos1, pos2) {
+        if (!pos1 || !pos2) return Infinity;
+        return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y);
+    }
+
+    // 자동 턴을 실행하는 메인 AI 함수
+    async function runAutoTurn(character) {
+        await logAction(`🤖 ${character.name}의 자동 턴을 시작합니다.`, "system");
+
+        // 1. 공격할 대상 찾기 (살아있는 적군)
+        const targets = characters.filter(c => c.type !== character.type && c.hp > 0 && c.x !== null);
+        if (targets.length === 0) {
+            await logAction(`🤖 공격할 대상이 없어 ${character.name}이(가) 턴을 종료합니다.`, "system");
+            await nextTurn();
+            return;
+        }
+
+        // 1.1. 가장 가까운 적을 타겟으로 설정
+        let closestTarget = null;
+        let minDistance = Infinity;
+        targets.forEach(target => {
+            const distance = getDistance(character, target);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestTarget = target;
+            }
+        });
+
+        // 2. 사용할 스킬 선택 (가장 첫 번째 공격 스킬)
+        const attackSkillId = character.skills.find(id => SKILLS[id]?.category === 'Attack');
+        if (!attackSkillId) {
+            await logAction(`🤖 사용할 공격 스킬이 없어 ${character.name}이(가) 턴을 종료합니다.`, "system");
+            await nextTurn();
+            return;
+        }
+        const attackSkill = SKILLS[attackSkillId];
+
+        // 3. 이동 및 공격 위치 계산
+        const moveRange = character.moveRange || SKILLS['move']?.range || 1;
+        const attackRange = attackSkill.range;
+        const characterSize = character.size || 1;
+
+        let bestMovePos = { x: character.x, y: character.y };
+        let canAttackAfterMove = false;
+
+        // 3.1. 현재 위치에서 공격 가능한지 확인
+        const distanceToTarget = getDistance(character, closestTarget);
+        if (distanceToTarget <= attackRange) {
+            canAttackAfterMove = true;
+        } else {
+            // 3.2. 이동해서 공격할 최적의 위치 찾기
+            let bestAttackSpot = null;
+            let minMoveDistance = Infinity;
+
+            // 이동 가능한 모든 칸을 순회
+            for (let dy = -moveRange; dy <= moveRange; dy++) {
+                for (let dx = -moveRange; dx <= moveRange; dx++) {
+                    if (Math.abs(dx) + Math.abs(dy) > moveRange) continue;
+
+                    const moveX = character.x + dx;
+                    const moveY = character.y + dy;
+
+                    if (moveX < 0 || moveY < 0 || moveX >= BOARD_SIZE || moveY >= BOARD_SIZE) continue;
+                    if (!canPlaceCharacter(character, moveX, moveY)) continue;
+                    
+                    const movedPos = { x: moveX, y: moveY };
+                    const distanceToTargetAfterMove = getDistance(movedPos, closestTarget);
+
+                    // 이동 후 공격이 가능하다면, 해당 위치를 후보로
+                    if (distanceToTargetAfterMove <= attackRange) {
+                        canAttackAfterMove = true;
+                        // 가장 적게 움직이는 위치를 선택
+                        const moveDistance = getDistance(character, movedPos);
+                        if (moveDistance < minMoveDistance) {
+                            minMoveDistance = moveDistance;
+                            bestAttackSpot = movedPos;
+                        }
+                    }
+                }
+            }
+             if (bestAttackSpot) {
+                bestMovePos = bestAttackSpot;
+            } else {
+                // 3.3. 공격 위치를 못찾았다면, 그냥 타겟에게 가장 가까이 이동
+                let closestPosToTarget = bestMovePos;
+                let minDistanceToTarget = getDistance(bestMovePos, closestTarget);
+
+                // 다시 이동 가능한 모든 칸을 순회
+                for (let dy = -moveRange; dy <= moveRange; dy++) {
+                    for (let dx = -moveRange; dx <= moveRange; dx++) {
+                        if (Math.abs(dx) + Math.abs(dy) > moveRange) continue;
+
+                        const moveX = character.x + dx;
+                        const moveY = character.y + dy;
+                        if (moveX < 0 || moveY < 0 || moveX >= BOARD_SIZE || moveY >= BOARD_SIZE) continue;
+                        if (!canPlaceCharacter(character, moveX, moveY)) continue;
+
+                        const movedPos = { x: moveX, y: moveY };
+                        const dist = getDistance(movedPos, closestTarget);
+                        if (dist < minDistanceToTarget) {
+                            minDistanceToTarget = dist;
+                            closestPosToTarget = movedPos;
+                        }
+                    }
+                }
+                bestMovePos = closestPosToTarget;
+            }
+        }
+        
+        // 4. 실행: 이동
+        const moved = (bestMovePos.x !== character.x || bestMovePos.y !== character.y);
+        if (moved) {
+            await logAction(`🤖 ${character.name}이(가) (${bestMovePos.x}, ${bestMovePos.y})(으)로 이동합니다.`, "move");
+            await updateDoc(doc(db, 'games', gameId, 'characters', character.id), { x: bestMovePos.x, y: bestMovePos.y });
+        } else {
+            await logAction(`🤖 ${character.name}이(가) 제자리를 유지합니다.`, "system");
+        }
+
+        // 5. 실행: 공격 (이동 후 1.5초 뒤)
+        setTimeout(async () => {
+            if (canAttackAfterMove) {
+                await logAction(`🤖 ${character.name}이(가) ${closestTarget.name}을(를) ${attackSkill.name}(으)로 공격!`, "system");
+                await executeSkill(character, closestTarget, attackSkillId);
+            } else {
+                await logAction(`🤖 공격할 수 없어 ${character.name}이(가) 턴을 종료합니다.`, "system");
+                await nextTurn();
+            }
+        }, moved ? 1500 : 500); // 이동했으면 1.5초, 아니면 0.5초 대기
+    }
     async function updateTurnIndex(newIndex, reverse = false) {
         if (characters.length === 0 || !gameId) return;
         
@@ -1181,6 +1529,7 @@
         currentTurnIndex = newIndex % characters.length;
         const currentTurnChar = characters[currentTurnIndex];
         const currentTurnCharId = currentTurnChar?.id || null;
+
 
         if (maxRounds > 0 && newRound > maxRounds) {
             await setDoc(doc(db, 'games', gameId), { gameState: 'ENDED', round: newRound, currentTurnIndex, currentTurnCharId }, { merge: true });
@@ -1775,7 +2124,7 @@
                             if (skill.hpCost > 0) costText += ` HP ${skill.hpCost}`;
                             if (costText) costText = `[${costText.trim()}]`;
 
-                            html += `<button data-skill-id="${skill.id}" data-category="${skill.category}" class="skill-btn ${selectedSkill === skill.id ? `ring-2 ${ringColor}` : ''} bg-gray-700 hover:bg-gray-600 text-white p-2 flex items-center flex-col text-xs font-semibold ${disabledClass}" ${canUse ? '' : 'disabled'}>
+                            html += `<button data-skill-id="${skill.id}" data-category="${skill.category}" class="skill-btn ${selectedSkill === skill.id ? `ring-2 ${ringColor}` : ''} text-white p-2 flex items-center flex-col text-xs font-semibold ${disabledClass}" ${canUse ? '' : 'disabled'}>
                                 ${skill.icon} ${skill.name}
                                 <span class="text-gray-400 text-xs">${costText}</span>
                                 </button>`;
@@ -1783,7 +2132,7 @@
                     }
                 });
                 
-                html += `</div><button id="undo-move-btn" class="w-full mt-2 bg-gray-500 hover:bg-gray-600 text-white p-2">↩️ 이동 취소</button>`;
+                html += `</div><button id="undo-move-btn" class="w-full mt-2 bg-gray-500 hover:bg-gray-600 text-white p-2">↩ 이동 취소</button>`;
             }
 
             html += `<button id="end-turn-btn" class="w-full mt-4 bg-yellow-600 hover:bg-yellow-700 text-white p-2 font-bold">턴 종료</button>`;
@@ -1841,6 +2190,23 @@
             let statusColor = char.hp <= 0 ? 'text-gray-500' : (char.type === 'ENEMY' ? 'text-red-400' : 'text-gray-300');
             if (isTurnChar && char.x !== null && char.hp > 0) statusColor = 'text-yellow-400';
             
+            const imageContainer = char.imageUrl 
+                ? `<div class="w-8 h-8 rounded-full bg-cover bg-center" style="background-image: url('${char.imageUrl}')"></div>`
+                : `<div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-lg font-bold font-title">${char.name.charAt(0)}</div>`;
+
+            charItem.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        ${imageContainer}
+                        <span class="font-semibold truncate">${char.name}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs ${statusColor}">${char.hp <= 0 ? '사망' : (char.x !== null ? `HP: ${char.hp}/${char.maxHp}` : '미배치')}</span>
+                        ${isAdmin ? `<button data-char-id="${char.id}" class="delete-char-btn text-red-500 hover:text-red-400 text-xs ml-2 p-1 rounded-sm border border-red-500 hover:border-red-400">삭제</button>` : ''}
+                    </div>
+                </div>
+            `;
+
             charItem.innerHTML = `
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
@@ -2092,6 +2458,10 @@
                             <div><label class="text-gray-400">크기 (예: 1, 2)</label><input id="edit-size" type="number" class="form-input mt-1" value="${character.size || 1}"></div>
                             <div><label class="text-gray-400">턴 순서</label><input id="edit-order" type="number" class="form-input mt-1" value="${character.turnOrder}"></div>
                         </div>
+                        <div class="flex items-center gap-2 pt-4 border-t border-gray-700/50">
+                            <input type="checkbox" id="edit-is-auto" class="form-checkbox h-5 w-5" ${character.isAuto ? 'checked' : ''}>
+                            <label for="edit-is-auto" class="font-bold text-yellow-400">자동 턴 진행 (AI)</label>
+                        </div>
                         <h4 class="text-lg font-bold text-gray-300 pt-4">스킬 선택</h4>
                         <div class="grid grid-cols-3 gap-4">${skillSelects}</div>
                         <!-- NEW: Move Range Adjustment (only visible if the character has the default 'move' skill) -->
@@ -2124,6 +2494,7 @@
                     maxDefense: parseInt(document.getElementById('edit-max-defense').value),
                     size: parseInt(document.getElementById('edit-size').value) || 1,
                     turnOrder: parseInt(document.getElementById('edit-order').value) || 99, 
+                    
                     skills: [
                         document.getElementById('edit-skill-1').value, 
                         document.getElementById('edit-skill-2').value, 
@@ -2133,7 +2504,7 @@
                     ].filter(s => s && s !== 'none') 
                 };
                 if (character.type === 'PC') updates.password = document.getElementById('edit-password').value;
-
+updates.isAuto = document.getElementById('edit-is-auto').checked;
                 // NEW: Update 'move' skill range for this specific character if changed.
                 if (character.skills.includes('move')) {
                     const newMoveRange = parseInt(document.getElementById('edit-move-range').value) || 1;
@@ -2145,7 +2516,6 @@
             };
             document.getElementById('cancel-edit-btn').onclick = () => openProfileModal(character, false);
         } else {
-            // View mode HTML
             const statIcon = (type) => ({
                 hp: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>`,
                 defense: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z" /></svg>`,
@@ -2155,7 +2525,6 @@
             const sizeIconSvg = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>`;
             const moveIconSvg = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>`;
 
-
             const buildStat = (type, label, value) => {
                 let iconHtml = statIcon(type);
                 if (type === 'attack') iconHtml = attackIconSvg;
@@ -2164,15 +2533,14 @@
                 return `<div class="stat-item">${iconHtml}<div><div class="value">${value}</div><div class="label">${label}</div></div></div>`;
             }
             
-            // Get effective move range (check if moveRange is set on character, otherwise fall back to global move skill range)
             const effectiveMoveRange = character.moveRange !== undefined 
                 ? character.moveRange 
                 : SKILLS['move']?.range || 1;
 
-
+            // 1. 모달의 기본 구조를 먼저 생성합니다.
             contentContainer.innerHTML = `<div class="profile-modal-container rounded-lg ${isEnemy ? 'enemy-profile' : ''}">
                 <button id="close-modal-btn" class="hover:text-white text-3xl leading-none">&times;</button>
-                <div class="profile-char-image" style="background-image: url('${character.imageUrl || `https://placehold.co/400x600/1a1a1a/444444?text=${character.name.charAt(0)}`}')"></div>
+                <div class="profile-char-image"></div>
                 <div class="profile-stats-panel">
                     <div class="profile-content-scroll">
                         <div>
@@ -2214,6 +2582,16 @@
                     </div>
                 </div>
             </div>`;
+            
+            // 2. 이미지 유무에 따라 .profile-char-image 요소를 채웁니다.
+            const imageContainer = contentContainer.querySelector('.profile-char-image');
+            if (character.imageUrl) {
+                imageContainer.style.backgroundImage = `url('${character.imageUrl}')`;
+            } else {
+                imageContainer.style.backgroundImage = 'none';
+                imageContainer.classList.add('flex', 'items-center', 'justify-center');
+                imageContainer.innerHTML = `<span class="font-title text-9xl text-gray-600">${character.name.charAt(0)}</span>`;
+            }
             
             document.getElementById('edit-char-btn').onclick = () => {
                 if (isAdmin) {
@@ -2355,7 +2733,7 @@
             </div>
         </div>`;
         
-        // Map Edit Toggle
+         // Map Edit Toggle
         container.innerHTML += `<div class="mb-8 p-4 border border-gray-700 rounded-md">
             <h4 class="font-bold text-lg mb-4 text-yellow-400">맵/지형 및 배경 관리</h4>
             <button id="open-map-edit-btn" class="w-full bg-purple-600 p-2 font-bold ${gameState !== 'PREPARATION' ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState !== 'PREPARATION' ? 'disabled' : ''}>맵 편집 모드 ${isMapEditMode ? '종료' : '시작'}</button>
@@ -2365,6 +2743,14 @@
                 <div class="flex gap-2 mt-1">
                     <input type="text" id="board-bg-url" class="form-input flex-grow" placeholder="이미지 URL" value="${boardBackgroundImage}">
                     <button id="save-board-bg-btn" class="bg-indigo-600 p-2 px-4">적용</button>
+                </div>
+            </div>
+
+            <div class="mt-4 pt-4 border-t border-gray-700/50">
+                <label for="page-bg-url" class="block text-sm font-medium text-gray-300">전체 페이지 배경 URL</label>
+                <div class="flex gap-2 mt-1">
+                    <input type="text" id="page-bg-url" class="form-input flex-grow" placeholder="이미지 URL" value="${pageBackgroundImage}">
+                    <button id="save-page-bg-btn" class="bg-indigo-600 p-2 px-4">적용</button>
                 </div>
             </div>
         </div>`;
@@ -2429,6 +2815,7 @@
             }
         });
 
+        // Character Management (이 부분 바로 위에 있는 Skill Management 코드의 마지막 부분입니다)
         skillHtml += `<div class="mt-8 pt-4 border-t border-gray-700">
             <h4 class="font-bold text-lg mb-2 text-green-400">새 스킬 추가</h4>
             <div class="grid grid-cols-2 gap-4">
@@ -2441,9 +2828,24 @@
                     <option value="Melee">Melee</option><option value="Ranged">Ranged</option><option value="Heal">Heal</option><option value="Utility">Utility</option><option value="Support">Support</option>
                 </select>
                 <input id="new-skill-icon" placeholder="아이콘 (e.g., 🔥)" class="form-input">
-                <input id="new-skill-range" type="number" placeholder="범위" class="form-input">
+                <input id="new-skill-range" type="number" placeholder="사거리" class="form-input">
                 <input id="new-skill-multiplier" type="number" step="0.1" placeholder="피해/회복 계수" class="form-input">
                 <input id="new-skill-mpcost" type="number" placeholder="MP 비용" class="form-input" value="0">
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-gray-600">
+                <h5 class="font-bold text-md mb-2 text-yellow-400">광역 스킬(AoE) 설정</h5>
+                <div class="grid grid-cols-3 gap-4 items-center">
+                    <div class="flex items-center gap-2">
+                        <input id="new-skill-isAoe" type="checkbox" class="form-checkbox h-5 w-5">
+                        <label for="new-skill-isAoe">광역 스킬 여부</label>
+                    </div>
+                    <input id="new-skill-aoeRange" type="number" placeholder="광역 범위 (e.g., 1)" class="form-input">
+                    <select id="new-skill-aoeShape" class="form-input bg-gray-700">
+                        <option value="square">정사각형</option>
+                        <option value="diamond">마름모</option>
+                    </select>
+                </div>
             </div>
             <button id="add-new-skill-btn" class="mt-4 bg-blue-600 p-2 w-full">새 스킬 저장</button>
         </div></div>`;
@@ -2513,6 +2915,13 @@
             saveBoardBackground(url);
         };
 
+        document.getElementById('save-page-bg-btn').onclick = async () => {
+            const url = document.getElementById('page-bg-url').value.trim();
+            if (gameId) {
+                await setDoc(doc(db, 'games', gameId), { pageBackgroundImage: url }, { merge: true });
+                await logAction(`🖼️ 관리자가 전체 페이지 배경을 설정했습니다.`, "admin");
+            }
+        };
 
         document.getElementById('admin-move-toggle').onchange = async (e) => {
             const isChecked = e.target.checked;
@@ -2566,7 +2975,12 @@
                 multiplier: parseFloat(document.getElementById('new-skill-multiplier').value) || 0,
                 category: document.getElementById('new-skill-category').value,
                 mpCost: parseInt(document.getElementById('new-skill-mpcost').value) || 0,
-                hpCost: 0, // Default 0 for simplicity in this panel
+                hpCost: 0,
+                // --- 아래 4줄을 추가하세요 ---
+                isAoe: document.getElementById('new-skill-isAoe').checked,
+                aoeRange: parseInt(document.getElementById('new-skill-aoeRange').value) || 0,
+                aoeShape: document.getElementById('new-skill-aoeShape').value,
+                rangeShape: 'square' // 기본 타겟팅 모양 (화염구와 동일하게)
             };
             if (gameId) {
                 await setDoc(doc(db, 'games', gameId), { skills: { ...SKILLS, [newId]: newSkill } }, { merge: true });
@@ -2683,10 +3097,14 @@
 
     async function handleCombatClick(e) {
         const token = e.target.closest('.character-token');
-        // IMPORTANT: Always use the cell for coordinates and targeting logic
         const cell = e.target.closest('.cell'); 
         if (!cell) return;
         
+        // --- 여기가 핵심적인 수정 부분입니다 ---
+        // 클릭이 발생하기 "전"에 선택되어 있던 캐릭터 ID를 미리 저장합니다.
+        const previouslySelectedCharId = selectedCharacterId; 
+        // ------------------------------------
+
         const selectedCharacter = characters.find(c => c.id === selectedCharacterId);
         const currentTurnChar = characters[currentTurnIndex];
         
@@ -2704,21 +3122,18 @@
         if (clickedCharId && currentTurnChar?.id === clickedCharId && (isAdmin || loggedInCharId === clickedCharId)) {
             selectedCharacterId = clickedCharId;
             
-            // Check if the click occurred on the 'turn-marker' or if it's a re-click of the token while in MOVE phase
             if (turnPhase === 'MOVE') {
                 const cellX = parseInt(cell.dataset.x);
                 const cellY = parseInt(cell.dataset.y);
                 
-                // Determine if the click was directly on the marker (which is attached to the token)
                 const isClickOnMarker = e.target.closest('.turn-marker'); 
                 
-                // Check if the click is on the character's current cell(s)
                 const isClickOnSelfCell = cellX >= clickedChar.x && cellX < (clickedChar.x + (clickedChar.size || 1)) &&
                                           cellY >= clickedChar.y && cellY < (clickedChar.y + (clickedChar.size || 1));
                 
-                // If marker is clicked OR if token/cell is clicked while MOVE range is active (meaning it's a zero-move intent or skip)
-                if (isClickOnMarker || (isClickOnSelfCell && selectedCharacterId === clickedCharId)) {
-                    // **Zero Movement (to skip move) / Go to ACTION phase**
+                // --- 조건문 수정 ---
+                // "이전에 선택된 캐릭터"와 "지금 클릭한 캐릭터"가 같을 때만 제자리 이동으로 판정합니다.
+                if (isClickOnMarker || (isClickOnSelfCell && previouslySelectedCharId === clickedCharId)) {
                     turnPhase = 'ACTION'; 
                     selectedSkill = null;
                     preMovePosition = { x: clickedChar.x, y: clickedChar.y }; 
@@ -2728,7 +3143,6 @@
                 }
             }
             
-            // If it wasn't a skip, then it's a selection/re-selection:
             turnPhase = 'MOVE';
             selectedSkill = 'move';
             preMovePosition = { x: clickedChar.x, y: clickedChar.y };
@@ -2736,9 +3150,9 @@
             return;
         }
 
-        // --- Clicks when a controllable character is ALREADY selected ---
+        // --- (이하 코드는 기존과 동일합니다) ---
+
         if (!isControllable) { 
-             // If not controllable, clear selection unless it's a double click for info
              selectedCharacterId = null; 
              selectedSkill = null; 
              render(); 
@@ -2753,11 +3167,8 @@
                 showCustomModal("이동 불가", "이 칸은 장애물입니다. 이동할 수 없습니다.", [{ text: "확인", class: "bg-red-600" }]);
                 return;
             }
-
-            // Move Execution
-            // Check if the target cell is actually highlighted as a valid move (using the CSS class)
+            
             if (cell.classList.contains('attack-range-move')) {
-                // Determine if this is a zero-move (clicking on the exact original position)
                 const isZeroMove = selectedCharacter.x === newX && selectedCharacter.y === newY;
 
                 await updateDoc(doc(db, 'games', gameId, 'characters', selectedCharacter.id), { x: newX, y: newY });
@@ -2770,15 +3181,13 @@
                     await logAction(`🏃 ${selectedCharacter.name}이(가) (${newX}, ${newY})(으)로 이동했습니다.`, "move");
                 }
                 
-                // Transition to ACTION phase after successful movement (even zero-move)
                 turnPhase = 'ACTION'; 
-                selectedSkill = null; // Clear selected skill to force user to choose an action
+                selectedSkill = null;
                 render();
             }
         } else if (turnPhase === 'ACTION') {
             const skill = SKILLS[selectedSkill];
             if (!skill) {
-                // If in ACTION phase but no skill is selected, prompt user to select skill
                 showCustomModal("행동 필요", "사용할 스킬을 선택해 주세요.", [{ text: "확인", class: "bg-yellow-600" }]);
                 return;
             }
@@ -2787,7 +3196,6 @@
             const isHealOrSupport = skill.category === 'Heal' || skill.category === 'Support';
             
             if (isAttackSkill) {
-                // Check if current user has enough MP to attempt the skill
                 if (selectedCharacter.mp < skill.mpCost) {
                     await logAction(`⚠️ ${selectedCharacter.name}이(가) 마나가 부족하여 ${skill.name}을(를) 시전하지 못했습니다.`, "system");
                     render();
@@ -2800,14 +3208,11 @@
                     }
                 } else if (clickedChar) {
                     const targetChar = clickedChar;
-                    // Standard Attack: Target must be enemy (type check) and in range (class check)
-                    // The findTargetsInAoe logic is used in highlightRange which checks if the cell is in range. We rely on the class check.
                     if (selectedCharacter.type !== targetChar.type && cell.classList.contains('attack-range-skill')) {
                         await executeSkill(selectedCharacter, targetChar, selectedSkill);
                     }
                 }
             } else if (isHealOrSupport) {
-                 // Check if current user has enough MP/HP to attempt the skill
                 if (selectedCharacter.mp < skill.mpCost || (skill.hpCost && selectedCharacter.hp <= skill.hpCost)) {
                     await logAction(`⚠️ ${selectedCharacter.name}이(가) 자원(MP/HP)이 부족하여 ${skill.name}을(를) 시전하지 못했습니다.`, "system");
                     render();
@@ -2823,12 +3228,10 @@
                     
                     let isValidTarget = false;
                     if (skill.targetType === 'ALLY_DEAD') {
-                        // Resurrect: Target must be dead ally
                         if (selectedCharacter.type === targetChar.type && targetChar.hp <= 0 && cell.classList.contains('heal-range-skill')) {
                             isValidTarget = true;
                         }
                     } else if (skill.targetType === 'ALLY') {
-                        // Heal/Support: Target must be live ally
                          if (selectedCharacter.type === targetChar.type && targetChar.hp > 0 && cell.classList.contains('heal-range-skill')) {
                             isValidTarget = true;
                         }
